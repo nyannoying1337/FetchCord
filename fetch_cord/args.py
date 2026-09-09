@@ -1,133 +1,113 @@
-# from __future__ import annotations
+"""Command line arguments."""
 
 import argparse
 
+from . import __version__
 
-def parse_args():
 
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fetch Cord\n" "https://github.com/MrPotatoBobx/FetchCord"
+        prog="fetchcord",
+        description="Show your Windows system info as Discord Rich Presence.",
+        epilog="https://github.com/nyannoying1337/FetchCord",
     )
-    parser.add_argument(
-        "--nodistro", action="store_true", help="Don't show distro info."
+
+    cycles = parser.add_argument_group("cycles")
+    cycles.add_argument(
+        "--no-os", action="store_true", help="Don't show the Windows version cycle."
     )
-    parser.add_argument(
-        "--nohardware", action="store_true", help="Don't show hardware info."
+    cycles.add_argument(
+        "--no-hardware", action="store_true", help="Don't show the CPU/GPU cycle."
     )
-    parser.add_argument(
-        "--noshell", action="store_true", help="Don't show shell/terminal info."
+    cycles.add_argument(
+        "--no-host", action="store_true", help="Don't show the PC/motherboard cycle."
     )
-    parser.add_argument("--nohost", action="store_true", help="Don't show host info.")
-    parser.add_argument(
-        "--noconfig",
+    cycles.add_argument(
+        "--with-terminal",
         action="store_true",
-        help="Disable neofetch custom config. Enable if you have an incompatible custom configuration.",
+        help="Show the terminal/shell cycle (off by default).",
     )
-    parser.add_argument(
-        "--time",
-        "-t",
-        metavar="TIME",
-        action="store",
-        help="Set custom time in seconds for cycles. Default is 30 seconds",
-    )
-    parser.add_argument(
-        "--terminal",
-        metavar="TERMINAL",
-        action="store",
-        help="Set custom Terminal (useful if using something like dmenu, or launching from a script).",
-    )
-    parser.add_argument(
-        "--termfont",
-        metavar="TERMFONT",
-        action="store",
-        help="Set custom Terminal Font (useful if neofetch can't get it).",
-    )
-    parser.add_argument(
-        "--install",
-        action="store_true",
-        help="Install fetchcord as a systemd service (user) and enable it.",
-    )
-    parser.add_argument(
-        "--uninstall",
-        action="store_true",
-        help="Uninstall fetchcord as a systemd service (user).",
-    )
-    parser.add_argument(
-        "--enable",
-        action="store_true",
-        help="Enable fetchcord systemd service (user).",
-    )
-    parser.add_argument(
-        "--disable",
-        action="store_true",
-        help="Disable fetchcord systemd service (user).",
-    )
-    parser.add_argument(
-        "--start",
-        action="store_true",
-        help="Start fetchcord systemd service (user).",
-    )
-    parser.add_argument(
-        "--stop",
-        action="store_true",
-        help="Stop fetchcord systemd service (user).",
-    )
-    parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Get fetchcord systemd service status (user).",
-    )
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="Update database of distros, hardware, etc.",
-    )
-    parser.add_argument(
-        "--testing",
-        action="store_true",
-        help="Get files from testing branch instead of master.",
-    )
-    parser.add_argument("--debug", "-d", action="store_true", help="Enable debugging.")
-    parser.add_argument(
+    cycles.add_argument(
         "--pause-cycle",
         "-p",
         action="store_true",
-        help="Extra cycle that pauses for 30 seconds or custom time using --time argument.",
+        help="Add a cycle that clears the presence, so other activities can show.",
     )
-    parser.add_argument(
-        "--memtype",
-        "-m",
-        metavar="TYPE",
-        action="store",
-        help="Show Memory in GiB or MiB. Valid vaules are 'gb', 'mb'",
+    # Pre-3.0 spellings, kept so existing shortcuts and scripts still work.
+    cycles.add_argument("--nodistro", dest="no_os", action="store_true", help=argparse.SUPPRESS)
+    cycles.add_argument("--nohardware", dest="no_hardware", action="store_true", help=argparse.SUPPRESS)
+    cycles.add_argument("--nohost", dest="no_host", action="store_true", help=argparse.SUPPRESS)
+    cycles.add_argument("--noshell", dest="no_terminal", action="store_true", help=argparse.SUPPRESS)
+
+    display = parser.add_argument_group("display")
+    display.add_argument(
+        "--time",
+        "-t",
+        type=int,
+        metavar="SECONDS",
+        help="Seconds to show each cycle (minimum 15). Overrides the config file.",
     )
-    parser.add_argument(
+    display.add_argument(
         "--poll-rate",
         "-r",
-        metavar="RATE",
-        action="store",
-        help="Set info polling rate.",
+        type=int,
+        metavar="CYCLES",
+        help="Refresh memory/disk/battery every N cycles.",
     )
-    parser.add_argument(
-        "--version", "-v", action="store_true", help="Print FetchCord Version."
-    )
-    parser.add_argument(
-        "--config-path",
-        "-c",
-        action="store",
-        help="Specify custom neofetch config path.",
-    )
-    parser.add_argument(
-        "--fetchcord-config-path",
-        "-fc",
-        action="store",
-        help="Specify custom fetchcord config path.",
-    )
-    parser.add_argument(
-        "--nfco",
-        "-nfco",
-        action="store",
-        help="nfco",
+    display.add_argument(
+        "--memtype",
+        "-m",
+        choices=("gb", "mb"),
+        help="Show memory in GiB (default) or MiB.",
     )
 
-    return parser.parse_args()
+    config = parser.add_argument_group("configuration")
+    config.add_argument(
+        "--config", "-c", metavar="PATH", help="Use a specific config file."
+    )
+    config.add_argument(
+        "--gen-config",
+        action="store_true",
+        help="Write a starter config to %%APPDATA%%\\FetchCord and exit.",
+    )
+    config.add_argument(
+        "--update", action="store_true", help="Update the hardware id database and exit."
+    )
+
+    startup = parser.add_argument_group("startup")
+    startup.add_argument(
+        "--install-startup",
+        action="store_true",
+        help="Start FetchCord automatically when you sign in.",
+    )
+    startup.add_argument(
+        "--uninstall-startup",
+        action="store_true",
+        help="Stop starting FetchCord automatically.",
+    )
+    startup.add_argument(
+        "--startup-status", action="store_true", help="Show whether autostart is set up."
+    )
+
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be sent to Discord and exit, without connecting.",
+    )
+    parser.add_argument("--debug", "-d", action="store_true", help="Print debug output.")
+    parser.add_argument(
+        "--version", "-v", action="version", version="FetchCord {}".format(__version__)
+    )
+
+    return parser
+
+
+def parse_args(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # --with-terminal wins over the suppressed --noshell alias.
+    if args.with_terminal:
+        args.no_terminal = False
+
+    return args

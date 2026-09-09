@@ -1,20 +1,20 @@
 ---
 name: Install issue
-about: Get help with installation issues
+about: FetchCord won't install or won't start
 title: ''
 labels: bug
 assignees: ''
-
 ---
 
-# How you tried to install fetchcord
+**How you installed it** (pip / from source / other)
 
-**This can be AUR, Github, or pip.**
+**The command you ran and its full output**
 
-# Operating system
+```
+paste here
+```
 
-**Your OS goes here.**
-
-# Other notes
-
-**Other notes about install error/issue.**
+**Environment**
+- Windows version:
+- Python version (`python -V`):
+- Is the Discord desktop client installed and running?

@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python-version: ["3.9", "3.13"]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: python -m pip install .
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Detect this machine
+        if: runner.os == 'Windows'
+        # Exercises the registry and Win32 collectors on a real Windows host.
+        run: fetchcord --dry-run
+
+      - name: Refuses to run off Windows
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if fetchcord --dry-run; then
+            echo "expected a non-zero exit on a non-Windows host" >&2
+            exit 1
+          fi

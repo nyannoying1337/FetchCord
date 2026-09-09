@@ -1,227 +1,240 @@
-#from __future__ import annotations
+"""Reading fetch_cord.conf.
+
+A broken config should never stop FetchCord from starting: unknown or invalid
+values are reported and replaced with the default, and a missing file just
+means the defaults are used throughout.
+"""
+
+import configparser
+import os
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+from .system.info import LINE_NAMES
+
+APP_DIR_NAME = "FetchCord"
+CONFIG_NAME = "fetch_cord.conf"
+
+MIN_CYCLE_TIME = 15
+DEFAULT_CYCLE_TIME = 30
+DEFAULT_POLL_RATE = 3
+
+# The cycles FetchCord knows how to show, in display order.
+CYCLE_NAMES = ("os", "hardware", "host", "terminal")
+
+DEFAULTS: Dict[str, Dict[str, str]] = {
+    "general": {
+        "poll_rate": str(DEFAULT_POLL_RATE),
+        "time": str(DEFAULT_CYCLE_TIME),
+    },
+    "os": {
+        "enabled": "on",
+        "top_line": "kernel",
+        "bottom_line": "memory",
+        "small_icon": "on",
+        "time": "",
+    },
+    "hardware": {
+        "enabled": "on",
+        "top_line": "cpu",
+        "bottom_line": "gpu",
+        "small_icon": "on",
+        "time": "",
+    },
+    "host": {
+        "enabled": "on",
+        "top_line": "host",
+        "bottom_line": "resolution",
+        "small_icon": "on",
+        "time": "",
+    },
+    "terminal": {
+        "enabled": "off",
+        "top_line": "terminal",
+        "bottom_line": "shell",
+        "small_icon": "on",
+        "time": "",
+    },
+}
 
 
-try:
-    import importlib.resources as pkg_resources
-except ImportError:
-    # Try backported to PY<37 `importlib_resources`.
-    import importlib_resources as pkg_resources
-import os, copy, json, configparser
-
-from . import resources as fc_resources
-from .args import parse_args
-
-
-args = parse_args()
+@dataclass
+class CycleConfig:
+    name: str
+    enabled: bool
+    top_line: str
+    bottom_line: str
+    small_icon: bool
+    time: int
 
 
-class ConfigError(Exception):
-    pass
+@dataclass
+class Config:
+    poll_rate: int = DEFAULT_POLL_RATE
+    cycles: Dict[str, CycleConfig] = None
+    warnings: List[str] = None
+
+    def enabled_cycles(self) -> List[CycleConfig]:
+        return [self.cycles[name] for name in CYCLE_NAMES if self.cycles[name].enabled]
 
 
-def load_config():
-    default_config = configparser.ConfigParser()
-    with pkg_resources.path(fc_resources, "fetch_cord.conf") as path:
-        default_config.read_file(open(path))
-        default_config.read(
-            ["/etc/fetch_cord.conf", os.path.expanduser("~/fetch_cord.conf")]
-        )
-        if args.fetchcord_config_path != None:
-            default_config.read([args.fetchcord_config_path])
-        for item in default_config.items():
-            print(item)
+def config_dir() -> str:
+    """Where a user's config lives (%APPDATA%\\FetchCord, or ~/.config elsewhere)."""
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return os.path.join(appdata, APP_DIR_NAME)
 
-        default_config = _parsed_config_to_dict(default_config)
-        _validate_config(default_config)
-
-        return default_config
+    return os.path.join(
+        os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), APP_DIR_NAME
+    )
 
 
-# def load_config():
-#     base_config = configparser.ConfigParser()
-#     base_config.read(["/etc/fetch_cord.conf"])
-#     base_config = _parsed_config_to_dict(base_config)
-#     _validate_config(base_config)
+def config_path() -> str:
+    return os.path.join(config_dir(), CONFIG_NAME)
 
 
-# #    try:
-#     user_config = configparser.ConfigParser()
-#     user_config.read("/etc/fetch_cord.conf")
-#     user_config = _parsed_config_to_dict(user_config)
-# #    except configparser.ParsingError as e:
-# #        print(
-# #            "Error parsing config file %s. Falling back to default config %s. Error is : %s",
-# #            envs.USER_CONFIG_COPY_PATH, envs.DEFAULT_CONFIG_PATH, str(e))
-#     return base_config
+def default_config_text() -> str:
+    """The bundled example config, used when writing one out for the user."""
+    from importlib.resources import files as resource_files
 
-#     corrected_config = _validate_config(user_config, fallback_config=base_config)
+    from . import resources
+
+    return resource_files(resources).joinpath(CONFIG_NAME).read_text(encoding="utf-8")
 
 
-#     return corrected_config
+def write_default_config(path: Optional[str] = None) -> str:
+    """Write the example config for the user to edit. Never overwrites."""
+    target = path or config_path()
+    if os.path.exists(target):
+        return target
+
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "w", encoding="utf-8") as handle:
+        handle.write(default_config_text())
+
+    return target
 
 
-def _validate_config(config, fallback_config=None):
+def _as_bool(value: str) -> Optional[bool]:
+    value = value.strip().lower()
+    if value in ("on", "true", "yes", "1"):
+        return True
+    if value in ("off", "false", "no", "0"):
+        return False
 
-    folder_path = os.path.dirname(os.path.abspath(__file__))
-    schema_path = os.path.join(folder_path, "config_schema.json")
+    return None
 
-    with open(schema_path, "r") as f:
-        schema = json.load(f)
 
-    corrected_config = copy.deepcopy(config)
+def _cycle_from_section(
+    name: str, section: Dict[str, str], fallback_time: int, warnings: List[str]
+) -> CycleConfig:
+    defaults = DEFAULTS[name]
 
-    # Checking if the config file has the required sections and options
-    for section in schema.keys():
-
-        if section not in config.keys():
-            raise ConfigError("Cannot find header for section [%s]" % section)
-
-        for option in schema[section].keys():
-
-            if option not in config[section].keys():
-                raise ConfigError(
-                    'Cannot find option "%s" in section [%s]' % (option, section)
-                )
-
-            valid, msg = _validate_option(
-                schema[section][option], config[section][option]
+    def warn(option: str, value: str, using: object):
+        warnings.append(
+            'config: invalid value "{}" for {} in [{}], using {}'.format(
+                value, option, name, using
             )
+        )
 
-            if not valid:
-                error_msg = (
-                    'Config parsing : error in option "%s" in section [%s] : %s'
-                    % (option, section, msg)
-                )
-                if fallback_config is not None:
-                    print(error_msg)
-                    print(
-                        'Falling back to default value "%s"',
-                        fallback_config[section][option],
-                    )
-                    corrected_config[section][option] = fallback_config[section][option]
+    enabled = _as_bool(section.get("enabled", defaults["enabled"]))
+    if enabled is None:
+        warn("enabled", section.get("enabled", ""), defaults["enabled"])
+        enabled = _as_bool(defaults["enabled"])
 
-                else:
-                    raise ConfigError(error_msg)
+    small_icon = _as_bool(section.get("small_icon", defaults["small_icon"]))
+    if small_icon is None:
+        warn("small_icon", section.get("small_icon", ""), defaults["small_icon"])
+        small_icon = _as_bool(defaults["small_icon"])
 
-    # Checking if the config file has no unknown section or option
-    for section in config.keys():
+    lines = {}
+    for option in ("top_line", "bottom_line"):
+        value = section.get(option, defaults[option]).strip().lower()
+        if value not in LINE_NAMES:
+            warn(option, value, defaults[option])
+            value = defaults[option]
+        lines[option] = value
 
-        if section not in schema.keys():
-            print("Config parsing : unknown section [%s]. Ignoring.", section)
-            continue
-
-        for option in config[section].keys():
-            if option not in schema[section].keys():
-                print(
-                    'Config parsing : unknown option "%s" in section [%s]. Ignoring.',
-                    option,
-                    section,
-                )
-                del corrected_config[section][option]
-
-    return corrected_config
-
-
-def _parsed_config_to_dict(config):
-
-    config_dict = {}
-
-    for section in config.keys():
-
-        if section == "DEFAULT":
-            continue
-
-        config_dict[section] = {}
-
-        for option in config[section].keys():
-            config_dict[section][option] = config[section][option]
-
-    return config_dict
-
-
-def _validate_option(schema_option_info, config_option_value):
-    valid = False
-    msg = "error"
-
-    parameter_type = schema_option_info[0]
-
-    assert parameter_type in ["multi_words", "single_word", "integer"]
-
-    # Multiple-words parameters
-    if parameter_type == "multi_words":
-        valid, msg = _validate_multi_words(schema_option_info, config_option_value)
-
-    # Single-word parameters
-    elif parameter_type == "single_word":
-        valid, msg = _validate_single_word(schema_option_info, config_option_value)
-
-    # Integer parameter
-    elif parameter_type == "integer":
-        valid, msg = _validate_integer(schema_option_info, config_option_value)
-
-    return valid, msg
-
-
-def _validate_multi_words(schema_option_info, config_option_value):
-
-    parameter_type, allowed_values, can_be_blank = schema_option_info
-    assert parameter_type == "multi_words"
-
-    values = config_option_value.replace(" ", "").split(",")
-
-    if values == [""]:
-        if not can_be_blank:
-            msg = "at least one parameter required"
-            return False, msg
-
-    else:
-        for val in values:
-            if val not in allowed_values:
-                msg = 'invalid value "%s"' % val
-                return False, msg
-
-    return True, None
-
-
-def _validate_single_word(schema_option_info, config_option_value):
-
-    parameter_type, allowed_values, can_be_blank = schema_option_info
-    assert parameter_type == "single_word"
-
-    val = config_option_value.replace(" ", "")
-
-    if val == "":
-        if not can_be_blank:
-            msg = "non-blank value required"
-            return False, msg
-
-    else:
-        if val not in allowed_values:
-            msg = 'invalid value "%s"' % val
-            return False, msg
-
-    return True, None
-
-
-def _validate_integer(schema_option_info, config_option_value):
-
-    parameter_type, can_be_blank = schema_option_info
-    assert parameter_type == "integer"
-
-    val = config_option_value.replace(" ", "")
-
-    if val == "":
-        if not can_be_blank:
-            msg = "non-blank integer value required"
-            return False, msg
-
-    else:
+    raw_time = section.get("time", "").strip()
+    if raw_time:
         try:
-            v = int(val)
-            if v <= 0:
+            cycle_time = int(raw_time)
+            if cycle_time < MIN_CYCLE_TIME:
                 raise ValueError
         except ValueError:
-            msg = "non-blank integer value required"
-            return False, msg
+            warn("time", raw_time, "{} seconds".format(fallback_time))
+            cycle_time = fallback_time
+    else:
+        cycle_time = fallback_time
 
-    return True, None
+    return CycleConfig(
+        name=name,
+        enabled=bool(enabled),
+        top_line=lines["top_line"],
+        bottom_line=lines["bottom_line"],
+        small_icon=bool(small_icon),
+        time=cycle_time,
+    )
+
+
+def load_config(path: Optional[str] = None) -> Config:
+    """Load the user's config, falling back to defaults for anything missing.
+
+    ``path`` overrides the search; otherwise %APPDATA%\\FetchCord is used when
+    a config has been written there.
+    """
+    parser = configparser.ConfigParser()
+    parser.read_dict(DEFAULTS)
+
+    warnings: List[str] = []
+    candidates = [path] if path else [config_path()]
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if not os.path.exists(candidate):
+            if path:
+                warnings.append("config: {} does not exist, using defaults".format(candidate))
+            continue
+        try:
+            parser.read(candidate, encoding="utf-8")
+        except (configparser.Error, OSError) as error:
+            warnings.append("config: could not read {} ({}), using defaults".format(candidate, error))
+
+    general = parser["general"] if parser.has_section("general") else {}
+
+    try:
+        poll_rate = int(general.get("poll_rate", DEFAULTS["general"]["poll_rate"]))
+        if poll_rate < 1:
+            raise ValueError
+    except ValueError:
+        warnings.append("config: invalid poll_rate, using {}".format(DEFAULT_POLL_RATE))
+        poll_rate = DEFAULT_POLL_RATE
+
+    try:
+        default_time = int(general.get("time", DEFAULTS["general"]["time"]))
+        if default_time < MIN_CYCLE_TIME:
+            raise ValueError
+    except ValueError:
+        warnings.append(
+            "config: invalid time, using {} seconds (minimum is {})".format(
+                DEFAULT_CYCLE_TIME, MIN_CYCLE_TIME
+            )
+        )
+        default_time = DEFAULT_CYCLE_TIME
+
+    for section in parser.sections():
+        if section not in DEFAULTS:
+            warnings.append('config: unknown section [{}], ignoring'.format(section))
+
+    cycles = {
+        name: _cycle_from_section(
+            name,
+            dict(parser[name]) if parser.has_section(name) else {},
+            default_time,
+            warnings,
+        )
+        for name in CYCLE_NAMES
+    }
+
+    return Config(poll_rate=poll_rate, cycles=cycles, warnings=warnings)

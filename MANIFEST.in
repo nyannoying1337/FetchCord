@@ -1,4 +1,0 @@
-include *.py
-include */*.py
-include */*/*.py
-include */*/*/*.py

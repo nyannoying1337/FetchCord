@@ -1,121 +1,136 @@
-# from __future__ import annotations
+"""FetchCord entry point."""
 
-from typing import Dict
-import sys, os
+import sys
 
-from .run_rpc import Run_rpc
-from .cycles import cycle0, cycle1, cycle2, cycle3, runmac, windows, pause
-from .computer.Computer import Computer
+from . import __version__, config as config_module
 from .args import parse_args
-from .debugger import run_rpc_debug
+from .config import MIN_CYCLE_TIME, load_config
+from .cycles import build_payloads
+from .ids import IdTable
+from .presence import PresenceRunner
+from .system import collect
+from .system.info import LINE_NAMES
+from .system.winapi import IS_WINDOWS
 from .update import update
-from . import __init__ as __init__
-from .resources import systemd_service
+
+# Command line flags that switch off a cycle from the config.
+_DISABLED_BY = {
+    "os": "no_os",
+    "hardware": "no_hardware",
+    "host": "no_host",
+    "terminal": "no_terminal",
+}
 
 
-def main():
-    args = parse_args()
+def _require_windows() -> bool:
+    if IS_WINDOWS:
+        return True
+
+    print(
+        "FetchCord {} is Windows only. For Linux or macOS, use FetchCord 2.x "
+        "(pip install 'fetchcord<3').".format(__version__)
+    )
+
+    return False
+
+
+def _print_dry_run(payloads, info, warnings):
+    print("FetchCord {} - dry run, nothing was sent to Discord.\n".format(__version__))
+
+    for warning in warnings:
+        print(warning)
+    if warnings:
+        print()
+
+    print("Detected:")
+    for name in LINE_NAMES:
+        print("  {:<11} {}".format(name, info.line(name)))
+
+    if not payloads:
+        print("\nNo cycles would be shown.")
+        return
+
+    print("\nCycles:")
+    for payload in payloads:
+        print("  [{}] application {} for {}s".format(payload.name, payload.client_id, payload.seconds))
+        for key, value in payload.as_update().items():
+            print("      {:<12} {}".format(key, value))
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
 
     if args.update:
-        update()
-    if os.name != "nt" and sys.platform != "darwin":
-        if args.install:
-            systemd_service.install()
-        if args.uninstall:
-            systemd_service.uninstall()
-        if args.enable:
-            systemd_service.enable()
-        if args.disable:
-            systemd_service.disable()
-        if args.start:
-            systemd_service.start()
-        if args.stop:
-            systemd_service.stop()
-        if args.status:
-            systemd_service.status()
-    if args.version:
-        print("FetchCord version:", __init__.VERSION)
-        sys.exit(0)
-    if args.time:
-        if int(args.time) < 15:
-            print("ERROR: Invalid time set, must be > 15 seconds, cannot continue.")
-            sys.exit(1)
+        return update()
+
+    if args.gen_config:
+        path = config_module.write_default_config()
+        print("Config: {}".format(path))
+        return 0
+
+    if args.install_startup or args.uninstall_startup or args.startup_status:
+        if not _require_windows():
+            return 1
+
+        from . import startup
+
+        if args.install_startup:
+            print("FetchCord will start at sign-in: {}".format(startup.install()))
+        elif args.uninstall_startup:
+            print("Autostart removed." if startup.uninstall() else "Autostart was not set up.")
         else:
-            print("setting custom time %s seconds" % args.time)
-    try:
-        if args.help:
-            sys.exit(0)
-    except AttributeError:
-        pass
+            current = startup.status()
+            print("Autostart: {}".format(current if current else "not set up"))
 
-    computer: Computer = Computer()
+        return 0
 
-    if (
-        not computer.neofetchwin
-        and computer.host == "Host: N/A"
-        and args.nodistro
-        and args.noshell
-        and args.nohardware
-    ):
-        print("ERROR: no hostline is available!")
-        sys.exit(1)
-    # printing info with debug switch
-    if args.debug:
-        run_rpc_debug(computer)
+    if not _require_windows():
+        return 1
 
-    run: Run_rpc = Run_rpc()
+    if args.time is not None and args.time < MIN_CYCLE_TIME:
+        print("ERROR: --time must be at least {} seconds.".format(MIN_CYCLE_TIME))
+        return 1
 
-    if computer.neofetchwin:
-        # wandowz
-        loops: Dict = {}
-        loops_indexes: Dict = {}
+    config = load_config(args.config)
+    for warning in config.warnings:
+        print(warning)
 
-        if not args.nodistro:
-            loops["windows"] = (computer.osinfoid, windows)
-            loops_indexes[len(loops_indexes)] = "windows"
-        if not args.nohardware:
-            loops["cycle1"] = (computer.cpuid, cycle1)
-            loops_indexes[len(loops_indexes)] = "cycle1"
+    info = collect(memory_unit=args.memtype or "gb")
+    ids = IdTable()
 
-        run.set_loop(
-            loops,
-            loops_indexes,
-            computer.updateMap,
-            int(args.poll_rate) if args.poll_rate else 3,
-        )
-        run.run_loop(computer)
-    else:
-        # loonix
-        loops: Dict = {}
-        loops_indexes: Dict = {}
+    cycles = []
+    for cycle in config.cycles.values():
+        enabled = cycle.enabled
+        if getattr(args, _DISABLED_BY[cycle.name], False):
+            enabled = False
+        if cycle.name == "terminal" and args.with_terminal:
+            enabled = True
+        if enabled:
+            cycles.append(cycle)
 
-        if not args.nodistro and computer.os != "macos":
-            loops["cycle0"] = (computer.osinfoid, cycle0)
-            loops_indexes[len(loops_indexes)] = "cycle0"
-        if computer.os == "macos":
-            loops["runmac"] = ("740822755376758944", runmac)
-            loops_indexes[len(loops_indexes)] = "runmac"
-        if not args.nohardware:
-            loops["cycle1"] = (computer.cpuid, cycle1)
-            loops_indexes[len(loops_indexes)] = "cycle1"
-        if not args.noshell:
-            loops["cycle2"] = (computer.terminalid, cycle2)
-            loops_indexes[len(loops_indexes)] = "cycle2"
-        if not args.nohost and computer.os != "macos":
-            loops["cycle3"] = (computer.hostappid, cycle3)
-            loops_indexes[len(loops_indexes)] = "cycle3"
-        if args.pause_cycle:
-            loops["pause"] = ("", pause)
-            loops_indexes[len(loops_indexes)] = "pause"
+    # Keep the configured display order.
+    cycles.sort(key=lambda cycle: config_module.CYCLE_NAMES.index(cycle.name))
 
-        run.set_loop(
-            loops,
-            loops_indexes,
-            computer.updateMap,
-            int(args.poll_rate) if args.poll_rate else 3,
-        )
-        run.run_loop(computer)
+    if args.dry_run:
+        _print_dry_run(build_payloads(cycles, info, ids), info, config.warnings)
+        return 0
+
+    if not cycles:
+        print("ERROR: every cycle is disabled, there is nothing to show.")
+        return 1
+
+    runner = PresenceRunner(
+        info,
+        ids,
+        cycles,
+        poll_rate=args.poll_rate or config.poll_rate,
+        time_override=args.time,
+        pause=args.pause_cycle,
+        debug=args.debug,
+    )
+
+    return runner.run()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
