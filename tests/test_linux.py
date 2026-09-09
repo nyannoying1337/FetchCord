@@ -18,6 +18,11 @@ from .test_cycles import cycle
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "linux")
 
+# Real PCI device directories are named "0000:00:02.0", but a colon is not a
+# legal filename character on Windows - git refuses to check the repository out
+# at all. The fixtures use dashes instead; nothing reads the directory name.
+WINDOWS_RESERVED = set('<>:"|?*')
+
 
 def fixture(name: str) -> str:
     return os.path.join(FIXTURES, name)
@@ -161,6 +166,18 @@ class TestReaders(unittest.TestCase):
         self.assertEqual(linux.read_gpus("/nonexistent"), [])
         self.assertIsNone(linux.read_resolution("/nonexistent"))
         self.assertFalse(linux.is_laptop("/nonexistent"))
+
+
+class TestFixtureLayout(unittest.TestCase):
+    def test_fixture_paths_can_be_checked_out_on_windows(self):
+        """A colon in a path makes the whole repo un-clonable on Windows."""
+        for root, dirs, files in os.walk(FIXTURES):
+            for entry in dirs + files:
+                with self.subTest(entry=entry):
+                    self.assertFalse(
+                        WINDOWS_RESERVED & set(entry),
+                        "{} contains a character Windows cannot check out".format(entry),
+                    )
 
 
 class TestDistroKeys(unittest.TestCase):
