@@ -62,6 +62,12 @@ class TestDisplayLines(unittest.TestCase):
                     continue
                 self.assertEqual(info.line(name), UNKNOWN)
 
+    def test_host_falls_back_to_board_without_a_system_model(self):
+        info = sample()
+        info.system_model = ""
+
+        self.assertEqual(info.host_line, info.board_line)
+
     def test_board_falls_back_to_host(self):
         info = sample()
         info.board_vendor = ""

@@ -79,6 +79,26 @@ class TestCollectWindows(CollectTestCase):
         self.assertEqual(info.host_line, "ASUSTeK COMPUTER INC. TUF GAMING FX505DT")
         self.assertEqual(info.board_line, "ASUSTeK COMPUTER INC. FX505DT")
 
+    def test_gpu_names_are_cleaned(self):
+        """Trademark markers are noise on a one-line presence."""
+        info = self.collect(gpus=["Intel(R) Arc(TM) B580 Graphics"])
+
+        self.assertEqual(info.gpu_line, "Intel Arc B580 Graphics")
+
+    def test_bare_vendor_host_falls_back_to_the_board(self):
+        """A self-built desktop reports only "ASUS" as the system."""
+        info = self.collect(
+            bios_values={
+                "SystemManufacturer": "ASUS",
+                "SystemProductName": "System Product Name",
+                "BaseBoardManufacturer": "ASUSTeK COMPUTER INC.",
+                "BaseBoardProduct": "PRIME B760-PLUS D4",
+            }
+        )
+
+        self.assertEqual(info.host_line, "ASUSTeK COMPUTER INC. PRIME B760-PLUS D4")
+        self.assertEqual(info.board_line, "ASUSTeK COMPUTER INC. PRIME B760-PLUS D4")
+
     def test_oem_placeholders_are_dropped(self):
         info = self.collect(
             bios_values={
@@ -89,7 +109,8 @@ class TestCollectWindows(CollectTestCase):
             }
         )
 
-        self.assertEqual(info.host_line, "N/A")
+        # No system identity at all, so both fall back to the board.
+        self.assertEqual(info.host_line, "ASRock B450M PRO4")
         self.assertEqual(info.board_line, "ASRock B450M PRO4")
 
     def test_display(self):
@@ -105,7 +126,7 @@ class TestCollectWindows(CollectTestCase):
     def test_gpus(self):
         info = self.collect(gpus=["Intel(R) UHD Graphics 630", "NVIDIA GeForce GTX 1650"])
 
-        self.assertEqual(info.gpu_line, "Intel(R) UHD Graphics 630, NVIDIA GeForce GTX 1650")
+        self.assertEqual(info.gpu_line, "Intel UHD Graphics 630, NVIDIA GeForce GTX 1650")
         self.assertEqual(info.gpu_vendor_key, "intelnvidia")
 
     def test_empty_registry_does_not_crash(self):

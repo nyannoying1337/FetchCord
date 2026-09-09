@@ -162,17 +162,27 @@ class SystemInfo:
             percent,
         )
 
+    def _system_text(self) -> str:
+        return " ".join(part for part in (self.system_vendor, self.system_model) if part)
+
+    def _board_text(self) -> str:
+        return " ".join(part for part in (self.board_vendor, self.board_model) if part)
+
     @property
     def host_line(self) -> str:
-        host = " ".join(part for part in (self.system_vendor, self.system_model) if part)
+        system = self._system_text()
 
-        return host or UNKNOWN
+        # Self-built desktops usually leave SystemProductName as a placeholder,
+        # which we drop - that leaves the bare vendor ("ASUS"), so prefer the
+        # board, which names the actual hardware.
+        if not self.system_model:
+            return self._board_text() or system or UNKNOWN
+
+        return system or UNKNOWN
 
     @property
     def board_line(self) -> str:
-        board = " ".join(part for part in (self.board_vendor, self.board_model) if part)
-
-        return board or self.host_line
+        return self._board_text() or self._system_text() or UNKNOWN
 
     @property
     def resolution_line(self) -> str:
@@ -372,9 +382,10 @@ def _display_adapters(names: List[str]) -> List[str]:
     Falls back to the raw list if filtering leaves nothing, so an unrecognised
     GPU is still shown by name.
     """
-    real = [name for name in names if naming.gpu_vendor(name)]
+    cleaned = [naming.clean(name) for name in names]
+    real = [name for name in cleaned if naming.gpu_vendor(name)]
 
-    return real or names
+    return real or cleaned
 
 
 def _collect_shell(info: SystemInfo):
