@@ -8,6 +8,7 @@ from .config import MIN_CYCLE_TIME, load_config
 from .cycles import build_payloads
 from .ids import IdTable
 from .presence import PresenceRunner
+from .report import report
 from .system import collect, platforms
 from .system.info import LINE_NAMES
 from .update import update
@@ -109,6 +110,9 @@ def main(argv=None) -> int:
 
     # Keep the configured display order.
     cycles.sort(key=lambda cycle: config_module.CYCLE_NAMES.index(cycle.name))
+
+    if args.report_hardware:
+        return report(info, ids)
 
     if args.dry_run:
         _print_dry_run(build_payloads(cycles, info, ids), info, config.warnings)

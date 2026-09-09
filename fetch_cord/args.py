@@ -90,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--report-hardware",
+        action="store_true",
+        help="Print a hardware report to paste into a GitHub issue, and exit.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would be sent to Discord and exit, without connecting.",

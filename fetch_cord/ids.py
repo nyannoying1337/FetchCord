@@ -120,6 +120,12 @@ class IdTable:
     def _section(self, name: str) -> Dict:
         return self.data.get(name, {})
 
+    def generic(self, section: str) -> str:
+        """The application a section falls back to when nothing matches."""
+        value = self._section(section).get("unknown", "")
+
+        return value if isinstance(value, str) else ""
+
     def os_id(self, os_key: str) -> str:
         distros = self._section("distro")
 
