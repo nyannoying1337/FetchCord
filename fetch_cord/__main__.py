@@ -115,7 +115,9 @@ def main(argv=None) -> int:
         return report(info, ids)
 
     if args.dry_run:
-        _print_dry_run(build_payloads(cycles, info, ids), info, config.warnings)
+        _print_dry_run(
+            build_payloads(cycles, info, ids, config.buttons), info, config.warnings
+        )
         return 0
 
     if not cycles:
@@ -131,6 +133,7 @@ def main(argv=None) -> int:
         pause=args.pause_cycle,
         debug=args.debug,
         pause_when=config.pause_when,
+        buttons=config.buttons,
     )
 
     return runner.run()

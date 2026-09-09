@@ -16,6 +16,10 @@ APP_DIR_NAME = "FetchCord"
 CONFIG_NAME = "fetch_cord.conf"
 
 MIN_CYCLE_TIME = 15
+
+# Discord's limits on presence buttons.
+MAX_BUTTONS = 2
+MAX_BUTTON_LABEL = 32
 DEFAULT_CYCLE_TIME = 30
 DEFAULT_POLL_RATE = 3
 
@@ -49,6 +53,12 @@ DEFAULTS: Dict[str, Dict[str, str]] = {
         "small_icon": "on",
         "time": "",
     },
+    "buttons": {
+        "label_1": "",
+        "url_1": "",
+        "label_2": "",
+        "url_2": "",
+    },
     "terminal": {
         "enabled": "off",
         "top_line": "terminal",
@@ -70,11 +80,18 @@ class CycleConfig:
 
 
 @dataclass
+class Button:
+    label: str
+    url: str
+
+
+@dataclass
 class Config:
     poll_rate: int = DEFAULT_POLL_RATE
     cycles: Dict[str, CycleConfig] = None
     warnings: List[str] = None
     pause_when: List[str] = None
+    buttons: List[Button] = None
 
     def enabled_cycles(self) -> List[CycleConfig]:
         return [self.cycles[name] for name in CYCLE_NAMES if self.cycles[name].enabled]
@@ -115,6 +132,43 @@ def write_default_config(path: Optional[str] = None) -> str:
         handle.write(default_config_text())
 
     return target
+
+
+def _buttons_from_section(section: Dict[str, str], warnings: List[str]) -> List["Button"]:
+    """Read up to two presence buttons, dropping any that Discord would reject."""
+    buttons = []
+
+    for index in range(1, MAX_BUTTONS + 1):
+        label = section.get("label_{}".format(index), "").strip()
+        url = section.get("url_{}".format(index), "").strip()
+
+        if not label and not url:
+            continue
+
+        if not label or not url:
+            warnings.append(
+                "config: button {} needs both a label and a url, ignoring".format(index)
+            )
+            continue
+
+        if len(label) > MAX_BUTTON_LABEL:
+            warnings.append(
+                "config: button {} label is longer than {} characters, ignoring".format(
+                    index, MAX_BUTTON_LABEL
+                )
+            )
+            continue
+
+        # Discord only accepts https links on presence buttons.
+        if not url.lower().startswith("https://"):
+            warnings.append(
+                'config: button {} url must start with "https://", ignoring'.format(index)
+            )
+            continue
+
+        buttons.append(Button(label=label, url=url))
+
+    return buttons
 
 
 def _as_bool(value: str) -> Optional[bool]:
@@ -235,6 +289,10 @@ def load_config(path: Optional[str] = None) -> Config:
         if name.strip()
     ]
 
+    buttons = _buttons_from_section(
+        dict(parser["buttons"]) if parser.has_section("buttons") else {}, warnings
+    )
+
     cycles = {
         name: _cycle_from_section(
             name,
@@ -250,4 +308,5 @@ def load_config(path: Optional[str] = None) -> Config:
         cycles=cycles,
         warnings=warnings,
         pause_when=pause_when,
+        buttons=buttons,
     )

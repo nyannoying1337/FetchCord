@@ -46,6 +46,7 @@ class Payload:
     small_text: Optional[str] = None
     start: Optional[int] = None
     seconds: int = 30
+    buttons: Optional[List[dict]] = None
 
     def as_update(self) -> dict:
         """Keyword arguments for ``Presence.update``, omitting empty fields."""
@@ -57,6 +58,7 @@ class Payload:
             "small_image": self.small_image,
             "small_text": self.small_text,
             "start": self.start,
+            "buttons": self.buttons,
         }
 
         return {key: value for key, value in fields.items() if value is not None}
@@ -147,12 +149,24 @@ def build_payload(cycle: CycleConfig, info: SystemInfo, ids: IdTable) -> Optiona
     return None
 
 
-def build_payloads(cycles: List[CycleConfig], info: SystemInfo, ids: IdTable) -> List[Payload]:
-    """Build every enabled cycle that has something to show."""
+def build_payloads(
+    cycles: List[CycleConfig],
+    info: SystemInfo,
+    ids: IdTable,
+    buttons: Optional[List] = None,
+) -> List[Payload]:
+    """Build every enabled cycle that has something to show.
+
+    Buttons are the same whichever cycle is showing, so they are attached
+    to all of them here rather than built per cycle.
+    """
+    links = [{"label": button.label, "url": button.url} for button in buttons or []]
+
     payloads = []
     for cycle in cycles:
         payload = build_payload(cycle, info, ids)
         if payload and payload.client_id:
+            payload.buttons = links or None
             payloads.append(payload)
 
     return payloads

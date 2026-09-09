@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from fetch_cord.config import (
+    MAX_BUTTON_LABEL,
     DEFAULT_CYCLE_TIME,
     DEFAULT_POLL_RATE,
     MIN_CYCLE_TIME,
@@ -100,6 +101,72 @@ class TestLoadConfig(unittest.TestCase):
         config = self.load("[terminal]\nenabled = on\n[hardware]\nenabled = off\n")
 
         self.assertEqual([c.name for c in config.enabled_cycles()], ["os", "host", "terminal"])
+
+
+class TestPauseWhen(TestLoadConfig):
+    def test_names_are_split_on_commas_and_semicolons(self):
+        config = self.load("[general]\npause_when = steam.exe, Spotify.exe ; vlc\n")
+
+        self.assertEqual(config.pause_when, ["steam.exe", "Spotify.exe", "vlc"])
+
+    def test_blank_by_default(self):
+        self.assertEqual(self.load("").pause_when, [])
+
+    def test_empty_entries_are_dropped(self):
+        config = self.load("[general]\npause_when = steam.exe,,  ,\n")
+
+        self.assertEqual(config.pause_when, ["steam.exe"])
+
+
+class TestButtons(TestLoadConfig):
+    def test_a_valid_button(self):
+        config = self.load("[buttons]\nlabel_1 = GitHub\nurl_1 = https://example.com\n")
+
+        self.assertEqual(len(config.buttons), 1)
+        self.assertEqual(config.buttons[0].label, "GitHub")
+        self.assertEqual(config.buttons[0].url, "https://example.com")
+        self.assertEqual(config.warnings, [])
+
+    def test_two_buttons(self):
+        config = self.load(
+            "[buttons]\nlabel_1 = A\nurl_1 = https://a.example\n"
+            "label_2 = B\nurl_2 = https://b.example\n"
+        )
+
+        self.assertEqual([b.label for b in config.buttons], ["A", "B"])
+
+    def test_none_configured(self):
+        self.assertEqual(self.load("").buttons, [])
+
+    def test_half_configured_button_warns(self):
+        config = self.load("[buttons]\nlabel_1 = GitHub\n")
+
+        self.assertEqual(config.buttons, [])
+        self.assertTrue(any("needs both" in w for w in config.warnings))
+
+    def test_non_https_url_is_rejected(self):
+        """Discord only accepts https links on presence buttons."""
+        config = self.load("[buttons]\nlabel_1 = A\nurl_1 = http://example.com\n")
+
+        self.assertEqual(config.buttons, [])
+        self.assertTrue(any("https://" in w for w in config.warnings))
+
+    def test_overlong_label_is_rejected(self):
+        long_label = "x" * (MAX_BUTTON_LABEL + 1)
+        config = self.load(
+            "[buttons]\nlabel_1 = {}\nurl_1 = https://example.com\n".format(long_label)
+        )
+
+        self.assertEqual(config.buttons, [])
+        self.assertTrue(any("longer than" in w for w in config.warnings))
+
+    def test_a_bad_button_does_not_take_the_good_one_with_it(self):
+        config = self.load(
+            "[buttons]\nlabel_1 = A\nurl_1 = ftp://nope\n"
+            "label_2 = B\nurl_2 = https://b.example\n"
+        )
+
+        self.assertEqual([b.label for b in config.buttons], ["B"])
 
 
 class TestBundledConfig(unittest.TestCase):

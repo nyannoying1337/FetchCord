@@ -46,6 +46,7 @@ class PresenceRunner:
         pause: bool = False,
         debug: bool = False,
         pause_when: Optional[List[str]] = None,
+        buttons: Optional[List] = None,
     ):
         self.info = info
         self.ids = ids
@@ -55,6 +56,7 @@ class PresenceRunner:
         self.pause = pause
         self.debug = debug
         self.pause_when = pause_when or []
+        self.buttons = buttons or []
 
         self._rpc: Optional[Presence] = None
         self._client_id: Optional[str] = None
@@ -178,7 +180,7 @@ class PresenceRunner:
 
         try:
             while True:
-                payloads = build_payloads(self.cycles, self.info, self.ids)
+                payloads = build_payloads(self.cycles, self.info, self.ids, self.buttons)
                 if not payloads:
                     print("ERROR: nothing to show, all cycles are disabled or empty.")
                     return 1

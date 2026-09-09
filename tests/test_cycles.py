@@ -125,6 +125,26 @@ class TestPayloads(unittest.TestCase):
     def test_unknown_cycle_name(self):
         self.assertIsNone(build_payload(cycle("nonsense"), self.info, self.ids))
 
+    def test_buttons_are_attached_to_every_cycle(self):
+        from fetch_cord.config import Button
+
+        buttons = [Button("GitHub", "https://example.com")]
+        payloads = build_payloads(load_config().enabled_cycles(), self.info, self.ids, buttons)
+
+        for payload in payloads:
+            with self.subTest(cycle=payload.name):
+                self.assertEqual(
+                    payload.as_update()["buttons"],
+                    [{"label": "GitHub", "url": "https://example.com"}],
+                )
+
+    def test_no_buttons_means_the_field_is_omitted(self):
+        payloads = build_payloads(load_config().enabled_cycles(), self.info, self.ids)
+
+        for payload in payloads:
+            with self.subTest(cycle=payload.name):
+                self.assertNotIn("buttons", payload.as_update())
+
     def test_build_payloads_uses_config_order(self):
         config = load_config()
         payloads = build_payloads(config.enabled_cycles(), self.info, self.ids)

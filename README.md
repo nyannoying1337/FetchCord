@@ -17,6 +17,11 @@ Discord application, so your profile reads *Playing Windows 11*, then
 
 ## What's new
 
+**3.3** adds `pause_when` so a game or Spotify keeps its own status instead of
+being replaced by your system info, shows your desktop environment's icon on
+Linux, adds optional profile buttons, and adds `--report-hardware` for filing
+issues about unrecognised hardware.
+
 **3.2 brings macOS back.** One `sysctl` call and CoreGraphics through ctypes -
 no `system_profiler`, which takes about a second to answer. All three
 platforms are supported again.
@@ -136,6 +141,8 @@ Any of these values work as `top_line` or `bottom_line` in any cycle:
 | `battery` | `87% (charging)` |
 | `terminal` | `Windows Terminal` |
 | `shell` | `PowerShell 7` |
+| `desktop` | `KDE` (Linux) |
+| `wm` | `i3` (Linux) |
 
 The four cycles are `[os]`, `[hardware]`, `[host]` and `[terminal]`. The
 terminal cycle is off by default, since it only makes sense when you start
@@ -144,11 +151,40 @@ FetchCord from a terminal you keep open.
 A typo in the config is reported on startup and the default is used - it will
 never stop FetchCord from running.
 
+### Let other programs keep their status
+
+FetchCord's presence replaces whatever else Discord would show, so a game or
+Spotify loses its status while FetchCord is running. List the programs that
+should win:
+
+```ini
+[general]
+pause_when = steam.exe, r5apex.exe, Spotify.exe
+```
+
+While any of them is running FetchCord shows nothing at all, and it resumes on
+its own once they close. Names match with or without `.exe`, so one line works
+on every platform.
+
+### Profile buttons
+
+Up to two clickable buttons on your profile:
+
+```ini
+[buttons]
+label_1 = GitHub
+url_1 = https://github.com/nyannoying1337/FetchCord
+```
+
+Labels are limited to 32 characters and URLs must be `https://`. Discord does
+**not** draw these when you look at your own profile — other people see them.
+
 ## Arguments
 
 | Argument | What it does |
 | --- | --- |
 | `--dry-run` | Print what would be sent to Discord, then exit |
+| `--report-hardware` | Print a hardware report to paste into an issue, then exit |
 | `--no-os`, `--no-hardware`, `--no-host` | Skip a cycle |
 | `--with-terminal` | Show the terminal/shell cycle |
 | `--pause-cycle`, `-p` | Add a cycle that clears the presence, so games show through |
@@ -184,8 +220,10 @@ or install Discord from your distribution's packages instead.
 **Nothing shows on my profile** - check Discord's *Settings → Activity Privacy
 → Share your detected activities with others*.
 
-**My CPU, GPU or motherboard says "Unknown"** - run `fetchcord --dry-run` and
-open an issue with the output. FetchCord still shows the full model name as
+**My CPU, GPU or motherboard says "Unknown"** - run `fetchcord --report-hardware`
+and open an issue with the output. It lists the raw strings we read and which
+ones fell back to a generic application, which is exactly what's needed to add
+them. FetchCord still shows the full model name as
 text; only the icon and the application name fall back to a generic one.
 `fetchcord --update` pulls the latest id database without upgrading FetchCord.
 
