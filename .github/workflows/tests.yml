@@ -27,16 +27,8 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -t . -v
 
-      # Exercises the real collectors - registry and Win32 on Windows,
-      # /proc, /sys and /etc on Linux - against an actual host.
+      # Exercises the real collectors against an actual host of each kind:
+      # registry and Win32 on Windows, /proc and /sys on Linux, sysctl and
+      # CoreGraphics on macOS.
       - name: Detect this machine
-        if: runner.os != 'macOS'
         run: fetchcord --dry-run
-
-      - name: Refuses to run where there is no collector
-        if: runner.os == 'macOS'
-        run: |
-          if fetchcord --dry-run; then
-            echo "expected a non-zero exit with no collector for this platform" >&2
-            exit 1
-          fi

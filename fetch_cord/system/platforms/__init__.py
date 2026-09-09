@@ -14,7 +14,7 @@ IS_WINDOWS = sys.platform == "win32"
 IS_LINUX = sys.platform.startswith("linux")
 IS_MACOS = sys.platform == "darwin"
 
-SUPPORTED = IS_WINDOWS or IS_LINUX
+SUPPORTED = IS_WINDOWS or IS_LINUX or IS_MACOS
 
 
 def name() -> str:
@@ -40,6 +40,11 @@ def current() -> Optional[ModuleType]:
         from . import linux
 
         return linux
+
+    if IS_MACOS:
+        from . import macos
+
+        return macos
 
     return None
 

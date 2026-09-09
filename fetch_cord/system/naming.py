@@ -77,6 +77,22 @@ _DISTRO_KEYS = frozenset({
     "zorin",
 })
 
+# macOS releases. Apple moved from 10.x to whole numbers with Big Sur, and
+# again to year-based numbering with Tahoe.
+_MACOS_CODENAMES = {
+    "10.13": "High Sierra",
+    "10.14": "Mojave",
+    "10.15": "Catalina",
+    "11": "Big Sur",
+    "12": "Monterey",
+    "13": "Ventura",
+    "14": "Sonoma",
+    "15": "Sequoia",
+    "26": "Tahoe",
+}
+
+_APPLE_CHIP = re.compile(r"\bapple\s+(m\d+)(?:\s+(pro|max|ultra))?", re.IGNORECASE)
+
 # PCI vendor ids for display adapters.
 _PCI_VENDORS = {
     "0x10de": "nvidia",
@@ -131,6 +147,8 @@ def cpu_vendor(raw: str) -> str:
         return "intel"
     if "authenticamd" in value or "amd" in value or "ryzen" in value:
         return "amd"
+    if "apple" in value:
+        return "apple"
 
     return "unknown"
 
@@ -168,6 +186,15 @@ def cpu_family(raw: str) -> Optional[str]:
         # Core Ultra and other newer families have no id of their own yet;
         # they fall through to the generic CPU app rather than borrowing a
         # Core i logo that would be wrong on the user's profile.
+        return None
+
+    if vendor == "apple":
+        chip = _APPLE_CHIP.search(value)
+        if chip:
+            # "Apple M4 Max" -> "m4 max", falling back to "m4" so a variant
+            # still resolves when only the base chip has an application.
+            return " ".join(part for part in chip.groups() if part).lower()
+
         return None
 
     if vendor == "amd":
@@ -320,3 +347,46 @@ def _distro_key_candidates(values: Dict[str, str]) -> List[str]:
 def pci_vendor(vendor_id: str) -> Optional[str]:
     """Vendor key for a PCI vendor id such as "0x10de"."""
     return _PCI_VENDORS.get((vendor_id or "").strip().lower())
+
+
+def macos_version_key(version: str) -> str:
+    """The release key for a macOS version string.
+
+    Big Sur onwards are numbered whole, so "14.5" keys on "14"; the 10.x
+    releases need the minor part to be told apart.
+    """
+    version = (version or "").strip()
+    if not version:
+        return ""
+
+    parts = version.split(".")
+    if parts[0] == "10":
+        return ".".join(parts[:2])
+
+    return parts[0]
+
+
+def macos_codename(version: str) -> str:
+    """"14.5" -> "Sonoma", or "" for a release we don't know."""
+    return _MACOS_CODENAMES.get(macos_version_key(version), "")
+
+
+def macos_name(version: str) -> str:
+    """The display name for a macOS release, e.g. "macOS Sonoma"."""
+    codename = macos_codename(version)
+
+    return "macOS {}".format(codename) if codename else "macOS"
+
+
+def cpu_family_fallbacks(family: Optional[str]) -> List[str]:
+    """Lookup keys to try for a CPU family, most specific first.
+
+    Chips with a variant suffix fall back to the base chip, so a table
+    carrying only "m4" still gives an M4 Max the right application.
+    """
+    if not family:
+        return []
+
+    parts = family.split()
+
+    return [family, parts[0]] if len(parts) > 1 else [family]

@@ -18,6 +18,8 @@ from typing import Dict, List, Optional
 
 from importlib.resources import files as _resource_files
 
+from .system import naming
+
 IDS_FILE = "fetchcord_ids.json"
 
 # Firmware vendor strings that don't contain the name the id table knows them
@@ -54,6 +56,8 @@ _VENDOR_ASSETS = (
     "msi",
     "tuf",
     "hvm",
+    "macbookpro",
+    "macbookair",
 )
 
 
@@ -129,7 +133,11 @@ class IdTable:
         if not isinstance(by_vendor, dict) or not family:
             return unknown
 
-        return by_vendor.get(family, unknown)
+        for candidate in naming.cpu_family_fallbacks(family):
+            if candidate in by_vendor:
+                return by_vendor[candidate]
+
+        return unknown
 
     def gpu_asset(self, vendor_key: str) -> Optional[str]:
         """Asset name for a GPU vendor combination, or None if we have no icon."""
