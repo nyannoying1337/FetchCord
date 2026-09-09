@@ -150,11 +150,19 @@ class TestPlatformGuards(unittest.TestCase):
         with self.assertRaises(winapi.UnsupportedPlatform):
             startup.status()
 
-    def test_collect_off_windows_returns_placeholders(self):
+    def test_collect_matches_the_platform(self):
+        """Real values on Windows, placeholders everywhere else."""
         info = info_module.collect()
 
-        self.assertEqual(info.cpu_line, "N/A")
         self.assertGreater(info.boot_time, 0)
+
+        if winapi.IS_WINDOWS:
+            self.assertNotEqual(info.cpu_line, "N/A")
+            self.assertNotEqual(info.os_key, "unknown")
+            self.assertGreater(info.memory_total, 0)
+        else:
+            self.assertEqual(info.cpu_line, "N/A")
+            self.assertEqual(info.os_key, "unknown")
 
 
 if __name__ == "__main__":
