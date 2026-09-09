@@ -74,6 +74,9 @@ class SystemInfo:
     terminal: str = ""
     shell: str = ""
 
+    desktop: str = ""
+    window_manager: str = ""
+
     memory_unit: str = "gb"
 
     # -- display lines ---------------------------------------------------
@@ -188,6 +191,21 @@ class SystemInfo:
         return self.shell or UNKNOWN
 
     @property
+    def desktop_line(self) -> str:
+        return self.desktop or UNKNOWN
+
+    @property
+    def wm_line(self) -> str:
+        return self.window_manager or UNKNOWN
+
+    @property
+    def dewm_line(self) -> str:
+        """Desktop and window manager together, for the icon's tooltip."""
+        parts = [part for part in (self.desktop, self.window_manager) if part]
+
+        return " / ".join(dict.fromkeys(parts))
+
+    @property
     def chassis(self) -> str:
         return "laptop" if self.laptop else "desktop"
 
@@ -207,6 +225,8 @@ class SystemInfo:
             "battery": self.battery_line,
             "terminal": self.terminal_line,
             "shell": self.shell_line,
+            "desktop": self.desktop_line,
+            "wm": self.wm_line,
         }
 
         return lines.get(name, UNKNOWN)
@@ -234,6 +254,8 @@ LINE_NAMES = (
     "battery",
     "terminal",
     "shell",
+    "desktop",
+    "wm",
 )
 
 
@@ -274,6 +296,16 @@ def _collect_battery(info: SystemInfo):
     info.laptop = True
 
 
+def _collector_options(collector) -> dict:
+    """Extra arguments a collector wants, without info.py importing ids."""
+    if getattr(collector, "WANTS_WINDOW_MANAGERS", False):
+        from ..ids import IdTable
+
+        return {"window_managers": IdTable().desktop_keys()}
+
+    return {}
+
+
 def collect(memory_unit: str = "gb") -> SystemInfo:
     """Gather everything we know about this machine."""
     info = SystemInfo(memory_unit=memory_unit)
@@ -286,7 +318,7 @@ def collect(memory_unit: str = "gb") -> SystemInfo:
     collector = platforms.current()
     if collector is not None:
         try:
-            collector.collect(info)
+            collector.collect(info, **_collector_options(collector))
         except Exception as error:
             # A collector failing is not worth losing the whole presence over:
             # anything it didn't fill simply reads N/A.

@@ -49,6 +49,23 @@ class TestPayloads(unittest.TestCase):
         self.assertEqual(payload.large_text, "Windows 11 Pro 24H2 x86_64")
         self.assertEqual(payload.small_image, "asustek")
 
+    def test_os_cycle_prefers_the_desktop_icon(self):
+        """On Linux the distro app carries DE/WM icons, not board vendors."""
+        info = sample()
+        info.desktop = "KDE"
+        info.window_manager = "kwin"
+        payload = build_payload(cycle("os"), info, self.ids)
+
+        self.assertEqual(payload.small_image, "kde")
+        self.assertEqual(payload.small_text, "KDE / kwin")
+
+    def test_os_cycle_keeps_the_board_icon_without_a_desktop(self):
+        """Windows and macOS set no desktop and are unaffected."""
+        payload = build_payload(cycle("os"), self.info, self.ids)
+
+        self.assertEqual(payload.small_image, "asustek")
+        self.assertEqual(payload.small_text, self.info.board_line)
+
     def test_hardware_cycle_uses_cpu_application(self):
         payload = build_payload(cycle("hardware"), self.info, self.ids)
 

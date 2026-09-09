@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 import psutil
 
-from .. import naming, shell
+from .. import naming, processes, shell
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..info import SystemInfo
@@ -28,6 +28,9 @@ PCI_DEVICES = "sys/bus/pci/devices"
 DRM = "sys/class/drm"
 POWER_SUPPLY = "sys/class/power_supply"
 CPU_FREQ = "sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
+
+# Ask collect() for the window manager names the id table knows.
+WANTS_WINDOW_MANAGERS = True
 
 # Where distributions put the PCI id database, when they ship it at all.
 PCI_IDS = ("usr/share/hwdata/pci.ids", "usr/share/misc/pci.ids")
@@ -222,6 +225,50 @@ def read_resolution(root: str = "/") -> Optional[str]:
     return None
 
 
+# Wayland compositors that announce themselves, so we needn't look at the
+# process list to find them.
+_WM_ENV_HINTS = (
+    ("SWAYSOCK", "sway"),
+    ("I3SOCK", "i3"),
+    ("HYPRLAND_INSTANCE_SIGNATURE", "hyprland"),
+)
+
+
+def read_desktop() -> str:
+    """The desktop environment, from whichever variable the session set.
+
+    XDG_CURRENT_DESKTOP can carry several colon-separated names
+    ("ubuntu:GNOME"); the last is the actual desktop.
+    """
+    for variable in ("XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION"):
+        value = os.environ.get(variable, "").strip()
+        if not value:
+            continue
+
+        name = value.split(":")[-1].strip()
+        if name:
+            # DESKTOP_SESSION is sometimes a path to a session file.
+            return os.path.basename(name)
+
+    return ""
+
+
+def read_window_manager(candidates: Optional[List[str]] = None) -> str:
+    """The window manager, from an environment hint or the process list.
+
+    Looking at running processes avoids needing xprop or wmctrl, and works
+    the same under X11 and Wayland.
+    """
+    for variable, name in _WM_ENV_HINTS:
+        if os.environ.get(variable):
+            return name
+
+    if not candidates:
+        return ""
+
+    return processes.any_running(candidates) or ""
+
+
 def is_laptop(root: str = "/") -> bool:
     return any(
         os.path.basename(path).startswith("BAT")
@@ -229,8 +276,12 @@ def is_laptop(root: str = "/") -> bool:
     )
 
 
-def collect(info: "SystemInfo", root: str = "/"):
-    """Fill in everything we can read from Linux."""
+def collect(info: "SystemInfo", root: str = "/", window_managers: Optional[List[str]] = None):
+    """Fill in everything we can read from Linux.
+
+    ``window_managers`` is the list of names worth looking for in the process
+    list; the caller passes the ones the id table has icons for.
+    """
     release = read_os_release(root)
     info.os_name = release.get("NAME") or release.get("PRETTY_NAME") or "Linux"
     info.os_release = release.get("VERSION_ID", "")
@@ -285,3 +336,6 @@ def collect(info: "SystemInfo", root: str = "/"):
     info.terminal, info.shell = shell.detect(
         _TERMINALS, _SHELLS, _IGNORED, shell=shell.basename(os.environ.get("SHELL"))
     )
+
+    info.desktop = read_desktop()
+    info.window_manager = read_window_manager(window_managers)

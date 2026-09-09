@@ -28,13 +28,33 @@ def fixture(name: str) -> str:
     return os.path.join(FIXTURES, name)
 
 
+# Session variables leak in from whatever runs the tests, so clear them.
+SESSION_VARS = {
+    "XDG_CURRENT_DESKTOP": "",
+    "XDG_SESSION_DESKTOP": "",
+    "DESKTOP_SESSION": "",
+    "SWAYSOCK": "",
+    "I3SOCK": "",
+    "HYPRLAND_INSTANCE_SIGNATURE": "",
+}
+
+
 def collect(name: str) -> SystemInfo:
     """Run the collector against a fixture, with the process walk stubbed out."""
     info = SystemInfo()
-    with mock.patch.object(linux.shell, "detect", return_value=("", "bash")):
+    with mock.patch.object(linux.shell, "detect", return_value=("", "bash")), mock.patch.dict(
+        os.environ, SESSION_VARS, clear=False
+    ), mock.patch.object(linux.processes, "any_running", return_value=None):
         linux.collect(info, root=fixture(name))
 
     return info
+
+
+def with_env(**values):
+    merged = dict(SESSION_VARS)
+    merged.update(values)
+
+    return mock.patch.dict(os.environ, merged, clear=False)
 
 
 class TestUbuntuDesktop(unittest.TestCase):
@@ -166,6 +186,96 @@ class TestReaders(unittest.TestCase):
         self.assertEqual(linux.read_gpus("/nonexistent"), [])
         self.assertIsNone(linux.read_resolution("/nonexistent"))
         self.assertFalse(linux.is_laptop("/nonexistent"))
+
+
+class TestDesktopDetection(unittest.TestCase):
+    def test_xdg_current_desktop_wins(self):
+        with with_env(XDG_CURRENT_DESKTOP="KDE", DESKTOP_SESSION="plasma"):
+            self.assertEqual(linux.read_desktop(), "KDE")
+
+    def test_colon_separated_value_takes_the_last_name(self):
+        """Ubuntu sets "ubuntu:GNOME"."""
+        with with_env(XDG_CURRENT_DESKTOP="ubuntu:GNOME"):
+            self.assertEqual(linux.read_desktop(), "GNOME")
+
+    def test_falls_back_through_the_other_variables(self):
+        with with_env(XDG_SESSION_DESKTOP="xfce"):
+            self.assertEqual(linux.read_desktop(), "xfce")
+
+        with with_env(DESKTOP_SESSION="cinnamon"):
+            self.assertEqual(linux.read_desktop(), "cinnamon")
+
+    def test_session_paths_are_reduced_to_a_name(self):
+        with with_env(DESKTOP_SESSION="/usr/share/xsessions/plasma"):
+            self.assertEqual(linux.read_desktop(), "plasma")
+
+    def test_nothing_set(self):
+        with with_env():
+            self.assertEqual(linux.read_desktop(), "")
+
+
+class TestWindowManagerDetection(unittest.TestCase):
+    def test_environment_hints_win_without_scanning(self):
+        with with_env(SWAYSOCK="/run/user/1000/sway.sock"):
+            with mock.patch.object(linux.processes, "any_running") as scan:
+                self.assertEqual(linux.read_window_manager(["i3"]), "sway")
+                scan.assert_not_called()
+
+        with with_env(I3SOCK="/run/user/1000/i3.sock"):
+            self.assertEqual(linux.read_window_manager([]), "i3")
+
+        with with_env(HYPRLAND_INSTANCE_SIGNATURE="abc"):
+            self.assertEqual(linux.read_window_manager([]), "hyprland")
+
+    def test_falls_back_to_the_process_list(self):
+        with with_env(), mock.patch.object(
+            linux.processes, "any_running", return_value="bspwm"
+        ) as scan:
+            self.assertEqual(linux.read_window_manager(["i3", "bspwm"]), "bspwm")
+            scan.assert_called_once_with(["i3", "bspwm"])
+
+    def test_nothing_running_and_no_hints(self):
+        with with_env(), mock.patch.object(linux.processes, "any_running", return_value=None):
+            self.assertEqual(linux.read_window_manager(["i3"]), "")
+
+    def test_no_candidates_means_no_scan(self):
+        with with_env(), mock.patch.object(linux.processes, "any_running") as scan:
+            self.assertEqual(linux.read_window_manager([]), "")
+            scan.assert_not_called()
+
+
+class TestDesktopAssets(unittest.TestCase):
+    """The id table already ships these icons; they were unused before."""
+
+    def setUp(self):
+        self.ids = IdTable()
+
+    def test_desktop_environments_resolve(self):
+        for desktop in ("KDE", "plasma", "GNOME", "XFCE", "Cinnamon", "MATE", "Budgie"):
+            with self.subTest(desktop=desktop):
+                self.assertTrue(self.ids.desktop_asset(desktop))
+
+    def test_window_manager_is_used_when_there_is_no_desktop(self):
+        for wm in ("i3", "sway", "dwm", "bspwm", "xmonad", "openbox"):
+            with self.subTest(wm=wm):
+                self.assertEqual(self.ids.desktop_asset("", wm), wm)
+
+    def test_desktop_wins_over_window_manager(self):
+        self.assertEqual(self.ids.desktop_asset("KDE", "i3"), "kde")
+
+    def test_unrecognised_desktop_falls_through_to_the_window_manager(self):
+        self.assertEqual(self.ids.desktop_asset("SomeNewDE", "sway"), "sway")
+
+    def test_nothing_known(self):
+        self.assertIsNone(self.ids.desktop_asset("", ""))
+        self.assertIsNone(self.ids.desktop_asset("SomeNewDE", "somenewwm"))
+
+    def test_window_manager_candidates_come_from_the_table(self):
+        keys = self.ids.desktop_keys()
+
+        self.assertIn("i3", keys)
+        self.assertIn("sway", keys)
+        self.assertNotIn("unknown", keys)
 
 
 class TestFixtureLayout(unittest.TestCase):

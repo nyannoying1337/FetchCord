@@ -95,8 +95,14 @@ def build_payload(cycle: CycleConfig, info: SystemInfo, ids: IdTable) -> Optiona
             info,
             client_id=ids.os_id(info.os_key),
             large_text=info.os_line,
-            small_image=ids.board_asset(info.board_line),
-            small_text=info.board_line,
+            # The distro applications carry desktop/window manager icons, so
+            # prefer those; Windows and macOS have no desktop set and keep
+            # showing their board vendor.
+            small_image=(
+                ids.desktop_asset(info.desktop, info.window_manager)
+                or ids.board_asset(info.board_line)
+            ),
+            small_text=info.dewm_line or info.board_line,
         )
 
     if cycle.name == "hardware":

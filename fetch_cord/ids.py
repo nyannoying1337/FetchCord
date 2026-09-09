@@ -181,6 +181,29 @@ class IdTable:
 
         return terminals.get(key, terminals.get("unknown", "")) if key else terminals.get("unknown", "")
 
+    def desktop_asset(self, desktop: str, window_manager: str = "") -> Optional[str]:
+        """Icon for a desktop environment, falling back to the window manager.
+
+        Distro applications carry these assets (kde, gnome, i3, sway, ...),
+        which is what makes them worth showing on the OS cycle.
+        """
+        for section, value in (("desktop", desktop), ("windowmanager", window_manager)):
+            if not value:
+                continue
+
+            table = self._section(section)
+            key = _match(table, value)
+            if key:
+                asset = table.get(key)
+                if asset and asset != "unknown":
+                    return asset
+
+        return None
+
+    def desktop_keys(self) -> List[str]:
+        """Window manager names worth looking for in the process list."""
+        return [key for key in self._section("windowmanager") if key != "unknown"]
+
     def shell_asset(self, name: str) -> Optional[str]:
         shells = self._section("shell")
         key = _match(shells, name)
