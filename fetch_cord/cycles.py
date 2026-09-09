@@ -1,269 +1,151 @@
-#from __future__ import annotations
+"""Turning system info + config into the presences FetchCord rotates through.
 
-import time
-from typing import Dict
+Each cycle is shown under a different Discord application, which is what makes
+the "playing Windows 11 / playing Ryzen 7" effect work.
+"""
 
-from .computer.Computer import Computer
-from .run_rpc import Run_rpc
-from .args import parse_args
+from dataclasses import dataclass
+from typing import List, Optional
 
-args = parse_args()
+from .config import CycleConfig
+from .ids import IdTable
+from .system.info import UNKNOWN, SystemInfo
 
-
-class Cycles:
-    config: Dict[str, str]
-
-    def __init__(self, config: Dict[str, str]):
-        self.config = config
-
-
-def pause(run: Run_rpc, key: str, computer: Computer):
-    if args.debug:
-        print("pause_cycle")
-    if args.time:
-        time.sleep(int(args.time))
-    else:
-        time.sleep(30)
+# Discord limits both text fields to 128 characters and rejects a field with
+# fewer than 2, so anything shorter is dropped instead of sent.
+MAX_TEXT = 128
+MIN_TEXT = 2
 
 
-def windows(run: Run_rpc, key: str, computer: Computer):
-    if args.debug:
-        print("w_cycle 0")
+def clamp(text: Optional[str]) -> Optional[str]:
+    """Fit a line into what Discord accepts, or None if it can't be shown."""
+    if not text:
+        return None
 
-    run.try_update(
-        key,
-        state=computer.osinfo,
-        details=computer.memory,
-        large_image="big",
-        large_text=computer.osinfo,
-        small_image=computer.motherboardid,
-        small_text=computer.motherboard,
-        start=computer.uptime,
+    text = text.strip()
+    if len(text) < MIN_TEXT:
+        return None
+    if len(text) > MAX_TEXT:
+        text = text[: MAX_TEXT - 1].rstrip() + "…"
+
+    return text
+
+
+@dataclass
+class Payload:
+    """One presence update, ready to hand to pypresence."""
+
+    name: str
+    client_id: str
+    details: Optional[str] = None
+    state: Optional[str] = None
+    large_image: str = "big"
+    large_text: Optional[str] = None
+    small_image: Optional[str] = None
+    small_text: Optional[str] = None
+    start: Optional[int] = None
+    seconds: int = 30
+
+    def as_update(self) -> dict:
+        """Keyword arguments for ``Presence.update``, omitting empty fields."""
+        fields = {
+            "details": self.details,
+            "state": self.state,
+            "large_image": self.large_image,
+            "large_text": self.large_text,
+            "small_image": self.small_image,
+            "small_text": self.small_text,
+            "start": self.start,
+        }
+
+        return {key: value for key, value in fields.items() if value is not None}
+
+
+def _build(
+    cycle: CycleConfig,
+    info: SystemInfo,
+    client_id: str,
+    large_text: str,
+    small_image: Optional[str],
+    small_text: Optional[str],
+) -> Payload:
+    # small_text is the tooltip for the small icon, so it is only worth
+    # sending when there is an icon to hover.
+    icon = small_image if cycle.small_icon else None
+
+    return Payload(
+        name=cycle.name,
+        client_id=client_id,
+        details=clamp(info.line(cycle.top_line)),
+        state=clamp(info.line(cycle.bottom_line)),
+        large_text=clamp(large_text),
+        small_image=icon,
+        small_text=clamp(small_text) if icon else None,
+        start=int(info.boot_time) if info.boot_time else None,
+        seconds=cycle.time,
     )
 
-    if args.time:
-        time.sleep(int(args.time))
-    elif args.nohardware:
-        time.sleep(9999)
-    else:
-        time.sleep(30)
-    run.try_clear(key)
 
-
-def runmac(run: Run_rpc, key: str, computer: Computer):
-    if args.debug:
-        print("runmac")
-        print("devicetype: %s" % computer.devicetype)
-        print("product %s" % computer.product)
-        print("bigicon: %s" % computer.bigicon)
-        print("ver: %s" % computer.version)
-        print("uptime: %s" % computer.uptime)
-
-    run.try_update(
-        key,
-        state=computer.packages,  # update state as packages
-        details=computer.kernel,  # update details as kernel
-        large_image=computer.bigicon,  # set icon
-        large_text=computer.osinfo,  # set large icon text
-        small_image=computer.devicetype,  # set small image icon
-        small_text=computer.product,  # set small image text
-        start=computer.uptime,
-    )
-    if args.time:
-        time.sleep(int(args.time))
-    elif args.nohost and args.nohardware and args.noshell:
-        time.sleep(9999)
-    else:
-        time.sleep(30)
-    run.try_clear(key)
-
-
-def cycle0(run: Run_rpc, key: str, computer: Computer):
-    top_line = run.config["cycle_0"]["top_line"]
-    if top_line == "kernel":
-        top_line = computer.kernel
-    else:
-        top_line = computer.packages
-    bottom_line = run.config["cycle_0"]["bottom_line"]
-    if bottom_line == "kernel":
-        bottom_line = computer.kernel
-    else:
-        bottom_line = computer.packages
-    de_wm_icon = run.config["cycle_0"]["de_wm_icon"]
-    if de_wm_icon == "on":
-        de_wm_icon = computer.desktopid
-    else:
-        de_wm_icon = "off"
-    if args.debug:
-        print("cycle 0")
-
-    run.try_update(
-        key,
-        state=bottom_line,
-        details=top_line,
-        large_image="big",
-        large_text=computer.osinfo,
-        small_image=de_wm_icon,
-        small_text=computer.dewmid,
-        start=computer.uptime,
-    )
-    if args.debug:
-        print("appid: %s" % computer.osinfoid)
-    config_time = run.config["cycle_0"]["time"]
-    if args.time:
-        time.sleep(int(args.time))
-    elif args.nohost and args.nohardware and args.noshell:
-        time.sleep(9999)
-    elif config_time:
-        time.sleep(int(config_time))
-    else:
-        time.sleep(30)
-    run.try_clear(key)
-
-
-def cycle1(run: Run_rpc, key: str, computer: Computer):
-    top_line = run.config["cycle_1"]["top_line"]
-    if top_line == "gpu":
-        top_line = computer.gpu
-    elif top_line == "cpu":
-        top_line = computer.cpu
-    elif top_line == "mem":
-        top_line = computer.memory
-    elif top_line == "disk":
-        top_line = computer.disks
-    bottom_line = run.config["cycle_1"]["bottom_line"]
-    if bottom_line == "gpu":
-        bottom_line = computer.gpu
-    elif bottom_line == "cpu":
-        bottom_line = computer.cpu
-    elif bottom_line == "mem":
-        bottom_line = computer.memory
-    elif bottom_line == "disk":
-        bottom_line = computer.disks
-    gpu_icon = run.config["cycle_1"]["gpu_icon"]
-    if gpu_icon == "on":
-        gpu_icon = computer.gpuid
-    else:
-        gpu_icon = "off"
-    if args.debug:
-        print("cycle 1")
-    run.try_update(
-        key,
-        state=bottom_line,
-        details=top_line,
-        large_image="big",
-        large_text=computer.cpu,
-        small_image=gpu_icon,
-        small_text=computer.gpu,
-        start=computer.uptime,
-    )
-    if args.debug:
-        print("appid: %s" % computer.cpuid)
-    config_time = run.config["cycle_1"]["time"]
-    if args.time:
-        time.sleep(int(args.time))
-    elif args.nodistro and args.noshell and args.nohost:
-        time.sleep(9999)
-    elif config_time:
-        time.sleep(int(config_time))
-    else:
-        time.sleep(30)
-    run.try_clear(key)
-
-
-def cycle2(run: Run_rpc, key: str, computer: Computer):
-    top_line = run.config["cycle_2"]["top_line"]
-    if top_line == "font":
-        top_line = computer.terminal
-    elif top_line == "shell":
-        top_line = computer.shellid
-    elif top_line == "theme":
-        top_line = computer.theme
-    bottom_line = run.config["cycle_2"]["bottom_line"]
-    if bottom_line == "font":
-        bottom_line = computer.terminal
-    elif bottom_line == "shell":
-        bottom_line = computer.shell
-    elif bottom_line == "theme":
-        bottom_line = computer.theme
-    shell_icon = run.config["cycle_2"]["shell_icon"]
-    if shell_icon == "on":
-        shell_icon = computer.shellid
-    else:
-        shell_icon = "off"
-    if args.debug:
-        print("cycle 2")
-
-    run.try_update(
-        key,
-        state=bottom_line,
-        details=top_line,
-        large_image="big",
-        large_text=computer.terminal,
-        small_image=shell_icon,
-        small_text=computer.shell,
-        start=computer.uptime,
-    )
-    if args.debug:
-        print("appid: %s" % computer.osinfoid)
-
-    config_time = run.config["cycle_2"]["time"]
-
-    if args.time:
-        time.sleep(int(args.time))
-    elif args.nodistro and args.nohardware and args.nohost:
-        time.sleep(9999)
-    elif config_time:
-        time.sleep(int(config_time))
-    else:
-        time.sleep(30)
-    run.try_clear(key)
-
-
-def cycle3(run: Run_rpc, key: str, computer: Computer):
-    # if not then forget it
-    if computer.host != "Host: N/A" and computer.motherboard != "Motherboard: N/A":
-        top_line = run.config["cycle_3"]["top_line"]
-        if top_line == "battery":
-            top_line = computer.battery
-        elif top_line == "host":
-            top_line = computer.motherboard
-        elif top_line == "resolution":
-            top_line = computer.resolution
-        bottom_line = run.config["cycle_3"]["bottom_line"]
-        if bottom_line == "resolution":
-            bottom_line = computer.resolution
-        elif bottom_line == "host":
-            bottom_line = computer.motherboard
-        elif bottom_line == "battery":
-            bottom_line = computer.battery
-        lapordesk_icon = run.config["cycle_3"]["lapordesk_icon"]
-        if lapordesk_icon == "on":
-            lapordesk_icon = computer.lapordesk
-        else:
-            lapordesk_icon = "off"
-        if args.debug:
-            print("cycle 3")
-        run.try_update(
-            key,
-            state=computer.resolution,
-            details=computer.battery,
-            large_image="big",
-            large_text=computer.motherboard,
-            small_image=lapordesk_icon,
-            small_text=computer.lapordesk,
-            start=computer.uptime,
+def build_payload(cycle: CycleConfig, info: SystemInfo, ids: IdTable) -> Optional[Payload]:
+    """Build one cycle's presence, or None when there's nothing worth showing."""
+    if cycle.name == "os":
+        return _build(
+            cycle,
+            info,
+            client_id=ids.os_id(info.os_key),
+            large_text=info.os_line,
+            small_image=ids.board_asset(info.board_line),
+            small_text=info.board_line,
         )
-        if args.debug:
-            print("appid: %s" % computer.hostappid)
-        config_time = run.config["cycle_3"]["time"]
-        if args.time:
-            time.sleep(int(args.time))
-        elif args.nodistro and args.nohardware and args.noshell:
-            time.sleep(9999)
-        elif config_time:
-            time.sleep(int(config_time))
-        else:
-            time.sleep(30)
-    # back from whence you came
-    run.try_clear(key)
+
+    if cycle.name == "hardware":
+        if info.cpu_line == UNKNOWN and info.gpu_line == UNKNOWN:
+            return None
+
+        return _build(
+            cycle,
+            info,
+            client_id=ids.cpu_id(info.cpu_vendor, info.cpu_family),
+            large_text=info.cpu_line,
+            small_image=ids.gpu_asset(info.gpu_vendor_key),
+            small_text=info.gpu_line,
+        )
+
+    if cycle.name == "host":
+        if info.host_line == UNKNOWN and info.board_line == UNKNOWN:
+            return None
+
+        return _build(
+            cycle,
+            info,
+            client_id=ids.board_id(info.board_line),
+            large_text=info.board_line,
+            small_image=info.chassis,
+            small_text=info.chassis.capitalize(),
+        )
+
+    if cycle.name == "terminal":
+        if info.terminal_line == UNKNOWN:
+            return None
+
+        return _build(
+            cycle,
+            info,
+            client_id=ids.terminal_id(info.terminal),
+            large_text=info.terminal_line,
+            small_image=ids.shell_asset(info.shell),
+            small_text=info.shell_line,
+        )
+
+    return None
+
+
+def build_payloads(cycles: List[CycleConfig], info: SystemInfo, ids: IdTable) -> List[Payload]:
+    """Build every enabled cycle that has something to show."""
+    payloads = []
+    for cycle in cycles:
+        payload = build_payload(cycle, info, ids)
+        if payload and payload.client_id:
+            payloads.append(payload)
+
+    return payloads

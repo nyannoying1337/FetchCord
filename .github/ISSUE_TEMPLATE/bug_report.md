@@ -1,26 +1,23 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Something isn't working
 title: ''
 labels: bug
 assignees: ''
-
 ---
 
-# Debug info
+**What happened**
 
-**Please run `fetchcord --debug` and send it here.**
+**What you expected**
 
-**If you are unable to run FetchCord please run `neofetch --noart`(windows) or `neofetch -- stdout`(macos&linux)**
+**Output of `fetchcord --dry-run`**
 
-# Operating system & way of installation
+```
+paste here
+```
 
-**Please provide your operating system, and how you got FetchCord(AUR, github,pip) here**
-
-# Error/issue
-
-**Your error or bug report goes in here.**
-
-# Other notes(optional)
-
-**Other notes about the error/issue**
+**Environment**
+- Windows version:
+- Python version (`python -V`):
+- FetchCord version (`fetchcord --version`):
+- Installed with: pip / from source

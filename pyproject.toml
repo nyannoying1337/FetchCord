@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FetchCord"
+version = "3.0.0"
+description = "Shows your Windows system info as Discord Rich Presence."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [{ name = "MrPotatoBobx" }]
+keywords = ["discord", "rich presence", "windows", "system info", "fetch"]
+dependencies = ["pypresence>=4.3", "psutil>=5.8"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/nyannoying1337/FetchCord"
+Issues = "https://github.com/nyannoying1337/FetchCord/issues"
+
+[project.scripts]
+fetchcord = "fetch_cord.__main__:main"
+
+[project.gui-scripts]
+# Same program without a console window, used by --install-startup.
+fetchcordw = "fetch_cord.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["fetch_cord*"]
+
+[tool.setuptools.package-data]
+fetch_cord = ["resources/*.json", "resources/*.conf"]

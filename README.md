@@ -1,175 +1,187 @@
 <h1 align="center">FetchCord</h1>
-</p>
+
 <p align="center">
-    <a href="https://img.shields.io/badge/Compatible-MacOS%2FWindows%2FLinux-brightgreen?style=for-the-badge&logo=discord">
-       <img src="https://img.shields.io/badge/Compatible-MacOS%2FLinux%2FWindows%2F-brightgreen?style=for-the-badge&logo=checkmarx&logoColor=white">
-    </a>
-  <a href="https://www.python.org/downloads/">
-       <img src="https://img.shields.io/pypi/pyversions/django?color=dark%20green&logo=python&logoColor=white&style=for-the-badge">
-    </a>
-   <a href="https://discord.gg/P4h9kdV">
-       <img src="https://img.shields.io/discord/742068289278312549?label=Discord&logo=discord&logoColor=white&style=for-the-badge">
-    </a>
-    <a href="https://img.shields.io/badge/Compatible-MacOS%2FWindows%2FLinux-brightgreen?style=for-the-badge&logo=discord">
-       <img src="https://cdn.discordapp.com/attachments/695182849476657223/742064452421288077/FetchDis.png"
-    </a>
-  
-  </a>
+    <img src="https://img.shields.io/badge/platform-Windows-brightgreen?style=for-the-badge&logo=windows&logoColor=white">
+    <img src="https://img.shields.io/badge/python-3.9%2B-blue?style=for-the-badge&logo=python&logoColor=white">
+    <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=for-the-badge">
 </p>
 
-# Table of content
-- [**Features**](#features)
-- [**To-Do**](#to-do)
-+ **Installing**
-    - [Install on (gnu/)linux](#installing-on-gnulinux)
-    - [Install on MacOS](#installing-on-macos)
-    - [Install on Windows](#installing-on-windows)
- + **Running**
-    - [Running on (gnu/)linux](#run)
-    - [Running on MacOS](#run-1)
-    - [Running on Windows](#run-2)
-- [**Configuration**](#Configuration)
-- [**Arguments**](#arguments)
-- [**Website**](#website)
+<p align="center">
+    Shows your Windows system info as Discord Rich Presence.
+</p>
 
-+ [**Examples**](#examples)
+FetchCord rotates through a few "cycles" on your Discord profile: your Windows
+version, your CPU and GPU, and your PC. Each cycle shows up under its own
+Discord application, so your profile reads *Playing Windows 11*, then
+*Playing Ryzen 7*, and so on.
 
-### Features
+## What's new in 3.0
 
-- [x] Distribution detection
- 
-- [x] Distribution Version
+FetchCord 3.0 is a Windows-only rewrite.
 
-- [x] Package detection
+- **No more neofetch.** Everything is read natively from the registry, a
+  couple of Windows API calls and psutil. Neofetch was archived in 2024 and
+  `neofetch-win` is unmaintained, so parsing their output was the main reason
+  FetchCord stopped working.
+- **Installing actually works.** Previous releases shipped a `setup.py` that
+  left out every subpackage, so `pip install fetchcord` produced an import
+  error on first run.
+- **A broken config can't stop it starting.** Invalid values are reported and
+  replaced with the default instead of raising.
+- **Autostart without the Task Scheduler dance** - `fetchcord --install-startup`.
+- **`--dry-run`** prints exactly what would be sent to Discord, which makes
+  "why is my GPU not showing" a ten second question.
 
-- [x] Kernel Detection
+Linux and macOS support was removed rather than left broken; the last release
+supporting them is 2.x (`pip install "fetchcord<3"`).
 
-- [x] Uptime
+## Requirements
 
-- [x] Detecting Window Manager/Desktop Environment
+- Windows 7 or newer (developed and tested against Windows 10 and 11)
+- Python 3.9+
+- The **Discord desktop client**, running. Rich Presence does not exist in the
+  browser version.
 
-- [x] Detecting GPU/CPU and display it in a cycle (thanks to Hyper-KVM)
+## Install
 
-- [x] Flatpak support
+```powershell
+python -m pip install fetchcord
+```
 
-- [x] Add Snap support
+Or straight from this repository:
 
-- [x] Add Windows support.
+```powershell
+python -m pip install git+https://github.com/nyannoying1337/FetchCord
+```
 
-- [x] Detect Window Manager/Desktop Environment version
+## Run
 
-- [x] Periodic polling of info such as package count, RAM usage, etc.
+```powershell
+fetchcord
+```
 
+That's it - no config needed. Leave it running and your profile updates every
+30 seconds. `Ctrl+C` stops it and clears the presence.
 
-### To-Do
+To check what FetchCord detects on your machine without touching Discord:
 
-- [ ] Add more distributions (If your distro is not supported open an issue)
+```powershell
+fetchcord --dry-run
+```
 
-- [ ] Add support for desktop icon use
+### Start it automatically
 
-- [ ] More CPUs, ex. Pentium, Older AMD CPUs
+```powershell
+fetchcord --install-startup     # start at sign-in, no console window
+fetchcord --startup-status      # check what's registered
+fetchcord --uninstall-startup   # stop
+```
 
-- [ ] More GPUs?
+This writes a single value under
+`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`. No
+administrator rights, nothing outside your own user account.
 
+## Configuration
 
-## Installing on (GNU/)Linux
-NOTE: you need neofetch to be also installed for this to work.
-#### Via AUR
-On Arch Linux for the git testing version (the less stable version): [fetchcord-testing](https://aur.archlinux.org/packages/fetchcord-testing/)
+```powershell
+fetchcord --gen-config
+```
 
-And the git version (synced with master): [fetchcord](https://aur.archlinux.org/packages/fetchcord/)
+writes a commented config to `%APPDATA%\FetchCord\fetch_cord.conf`. Open it in
+any editor. Use `--config PATH` to point at a different file.
 
-Historically the stabler release was the one from [pip](#via-pip) but now master will have only the stable releases.
-#### Via Snap
-On systems with snap installed, you can run `sudo snap install fetchcord --classic` to install fetchcord.
+Each cycle picks two lines of text and an optional small icon:
 
-Note that like the AUR version, this version is directly from master, for the stable release use [pip](#via-pip) <!-- remove this if you're not automatically deploying it -->
-#### Via pip
-To Install fetchcord via pip you can run `pip3 install fetchcord`
+```ini
+[hardware]
+enabled = on
+top_line = cpu
+bottom_line = gpu
+small_icon = on
+time = 30
+```
 
-If you want to remove FetchCord you can run `pip3 uninstall fetchcord`
+Any of these values work as `top_line` or `bottom_line` in any cycle:
 
-### Run
+| Value | Example |
+| --- | --- |
+| `os` | `Windows 11 Pro 24H2 x86_64` |
+| `kernel` | `10.0.26100.4652` |
+| `uptime` | `3 hours, 12 mins` |
+| `cpu` | `AMD Ryzen 7 5800X (16) @ 3.80GHz` |
+| `gpu` | `NVIDIA GeForce RTX 4070` |
+| `memory` | `12.40 GiB / 31.92 GiB` |
+| `disk` | `410.22 GiB / 930.90 GiB (44%)` |
+| `host` | `ASUSTeK COMPUTER INC. ROG STRIX` |
+| `board` | `ASUSTeK COMPUTER INC. TUF GAMING X570-PLUS` |
+| `resolution` | `2560x1440 @ 165Hz` |
+| `battery` | `87% (charging)` |
+| `terminal` | `Windows Terminal` |
+| `shell` | `PowerShell 7` |
 
-Once installed, simply run `fetchcord`. The program is also daemonizable meaning you can start it on boot using any method you prefer.
+The four cycles are `[os]`, `[hardware]`, `[host]` and `[terminal]`. The
+terminal cycle is off by default, since it only makes sense when you start
+FetchCord from a terminal you keep open.
 
-If you get `fetchcord: command not found`,add `export PATH="$HOME/.local/bin:$PATH"` to your bashrc, or just run `python3 -m fetchcord`.
-
-Optionally for systemd users there is a user-side `fetchcord.service` in this repo that can be installed to `~/.local/share/systemd/user/`, started and enabled on boot using `systemctl --user enable --now fetchcord`.
-
-## Installing on MacOS
-
-To install FetchCord, run `pip3 install FetchCord`
-
-NOTE: you need neofetch to be also installed for this to work.
-
-### Run 
-
-simply run `fetchcord`
-
-## Installing on Windows
-
-To install fetchcord on Windows run `python -m pip install fetchcord neofetch-win`. Alternatively, you can use the neofetch package from scoop as well (show more info at the expense of possible GPU detection, for now).
-
-### Run
-To run Fetchcord run `fetchcord`
-
-### Configuration
-
-On Linux you can use the neofetch config file to:
-
-Show disk usage
-
-Battery level
-
-CPU temp
-
-Current CPU speed
-
-Font
-
-Theme
-
-And more
-
-default config path should be `~/.config/neofetch/config.conf`
+A typo in the config is reported on startup and the default is used - it will
+never stop FetchCord from running.
 
 ## Arguments
---nodistro, Don't show distro info.
 
---nohardware, Don't show hardware info.
+| Argument | What it does |
+| --- | --- |
+| `--dry-run` | Print what would be sent to Discord, then exit |
+| `--no-os`, `--no-hardware`, `--no-host` | Skip a cycle |
+| `--with-terminal` | Show the terminal/shell cycle |
+| `--pause-cycle`, `-p` | Add a cycle that clears the presence, so games show through |
+| `--time`, `-t` | Seconds per cycle (minimum 15) |
+| `--poll-rate`, `-r` | Refresh memory/disk/battery every N cycles |
+| `--memtype`, `-m` | `gb` (default) or `mb` |
+| `--config`, `-c` | Use a specific config file |
+| `--gen-config` | Write a starter config and exit |
+| `--install-startup`, `--uninstall-startup`, `--startup-status` | Autostart at sign-in |
+| `--update` | Refresh the hardware id database |
+| `--debug`, `-d` | Print every presence update |
+| `--version`, `-v` | Print the version |
 
---noshell, Don't show shell/terminal info.
+The old `--nodistro`, `--nohardware`, `--nohost` and `--noshell` spellings
+still work.
 
---nohost, Don't show host info.
+## Troubleshooting
 
---time, -t, set custom duration for cycles in seconds.
+**"Waiting for Discord..."** - the desktop client isn't running, or you're
+signed in through the browser. FetchCord keeps retrying, so just start Discord
+and it will connect on its own.
 
---terminal, set custom terminal (useful if using a script or dmenu).
+**Nothing shows on my profile** - check Discord's *Settings → Activity Privacy
+→ Share your detected activities with others*.
 
---termfont, set custom terminal font (useful if neofetch can't get it).
+**My CPU, GPU or motherboard says "Unknown"** - run `fetchcord --dry-run` and
+open an issue with the output. FetchCord still shows the full model name as
+text; only the icon and the application name fall back to a generic one.
+`fetchcord --update` pulls the latest id database without upgrading FetchCord.
 
---pause-cycle, Extra cycle that pauses FetchCord to show other activities.
+**Some hardware is missing entirely** - `--dry-run` shows every detected line.
+Anything reading `N/A` couldn't be read from this machine; include that output
+in the issue.
 
---update, Update database of distros, hardware, etc.
+## Adding your hardware
 
---debug, For debug logs.
+Icons and application names come from
+[`fetch_cord/resources/fetchcord_ids.json`](fetch_cord/resources/fetchcord_ids.json).
+Matching lives in `fetch_cord/system/naming.py` (raw string → lookup key) and
+`fetch_cord/ids.py` (lookup key → Discord application id and icon). Both are
+covered by tests you can run anywhere:
 
---memtype, use GB or MB to show RAM.
-
--h or --help, shows this information above.
-
-## Website
-
-Fetchcord now has a website! You can find this site over at https://fetchcord.github.io/ - please keep in mind this site is still currently work in progress though.
+```powershell
+python -m unittest discover -s tests -t .
+```
 
 ## Examples
 
-### Operating Systems
-![MacOS bigsur](Examples/mac.png) ![Windows 10](Examples/windows.png) ![Ubuntu](Examples/ubuntu.png)
-### Terminals
-![Konsole](Examples/konsole.png) ![Gnome terminal](Examples/gnometerm.png) ![Apple terminal](Examples/appleterm.png)
-### Cpus
-![Ryzen 9](Examples/ryzencpu.png) ![Intel i7](Examples/intelcpu.png) ![Intel pentium](Examples/pent.png)
+### Windows
+![Windows](Examples/windows.png)
+### CPUs
+![Ryzen 9](Examples/ryzencpu.png) ![Intel i7](Examples/intelcpu.png) ![Intel Pentium](Examples/pent.png)
 ### Hosts
 ![HP laptop](Examples/hp.png) ![TUF gaming laptop](Examples/tuf.png) ![Lenovo desktop](Examples/len.png)
