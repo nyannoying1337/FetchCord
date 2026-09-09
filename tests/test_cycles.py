@@ -68,6 +68,19 @@ class TestPayloads(unittest.TestCase):
         self.assertIsNone(payload.small_text)
         self.assertNotIn("small_image", payload.as_update())
 
+    def test_small_text_is_dropped_without_an_icon(self):
+        """A tooltip with no icon to hover is dead data."""
+        info = sample()
+        info.system_vendor = "Framework"
+        info.system_model = "Laptop 13"
+        info.board_vendor = "Framework"
+        info.board_model = "FRANMZCP09"
+        payload = build_payload(cycle("os"), info, self.ids)
+
+        self.assertIsNone(payload.small_image)
+        self.assertIsNone(payload.small_text)
+        self.assertNotIn("small_text", payload.as_update())
+
     def test_start_is_an_integer_timestamp(self):
         payload = build_payload(cycle("os"), self.info, self.ids)
 

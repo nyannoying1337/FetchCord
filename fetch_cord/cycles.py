@@ -69,14 +69,18 @@ def _build(
     small_image: Optional[str],
     small_text: Optional[str],
 ) -> Payload:
+    # small_text is the tooltip for the small icon, so it is only worth
+    # sending when there is an icon to hover.
+    icon = small_image if cycle.small_icon else None
+
     return Payload(
         name=cycle.name,
         client_id=client_id,
         details=clamp(info.line(cycle.top_line)),
         state=clamp(info.line(cycle.bottom_line)),
         large_text=clamp(large_text),
-        small_image=small_image if cycle.small_icon else None,
-        small_text=clamp(small_text) if cycle.small_icon else None,
+        small_image=icon,
+        small_text=clamp(small_text) if icon else None,
         start=int(info.boot_time) if info.boot_time else None,
         seconds=cycle.time,
     )
