@@ -147,6 +147,52 @@ class TestShow(PresenceTestCase):
         self.assertTrue(FakePresence.instances[-1].updates)
 
 
+class TestPauseWhen(PresenceTestCase):
+    def test_presence_is_held_back_while_a_named_process_runs(self):
+        """A game should keep the status FetchCord would otherwise replace."""
+        run = runner(pause_when=["steam.exe"])
+        self.sleep.side_effect = [None, KeyboardInterrupt()]
+
+        with mock.patch(
+            "fetch_cord.system.processes.find_running", return_value="steam.exe"
+        ):
+            run.run()
+
+        self.assertEqual(FakePresence.instances, [])
+
+    def test_presence_resumes_once_the_process_closes(self):
+        run = runner(pause_when=["steam.exe"])
+        self.sleep.side_effect = [None, None, KeyboardInterrupt()]
+
+        with mock.patch(
+            "fetch_cord.system.processes.find_running", side_effect=["steam.exe", None, None]
+        ):
+            run.run()
+
+        self.assertTrue(FakePresence.instances)
+        self.assertTrue(FakePresence.instances[0].updates)
+
+    def test_an_open_connection_is_dropped_when_pausing(self):
+        run = runner(pause_when=["steam.exe"])
+        run.connect("123")
+        opened = FakePresence.instances[-1]
+        self.sleep.side_effect = [None, KeyboardInterrupt()]
+
+        with mock.patch(
+            "fetch_cord.system.processes.find_running", return_value="steam.exe"
+        ):
+            run.run()
+
+        self.assertTrue(opened.closed)
+
+    def test_nothing_configured_means_no_pausing(self):
+        run = runner()
+        self.sleep.side_effect = [None, KeyboardInterrupt()]
+        run.run()
+
+        self.assertTrue(FakePresence.instances)
+
+
 class TestRunLoop(PresenceTestCase):
     def test_rotates_cycles_and_stops_cleanly_on_ctrl_c(self):
         run = runner()

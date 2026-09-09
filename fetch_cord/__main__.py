@@ -126,6 +126,7 @@ def main(argv=None) -> int:
         time_override=args.time,
         pause=args.pause_cycle,
         debug=args.debug,
+        pause_when=config.pause_when,
     )
 
     return runner.run()

@@ -6,6 +6,7 @@ from typing import List, Optional
 from pypresence import Presence, exceptions
 
 from .cycles import Payload, build_payloads
+from .system import processes
 from .ids import IdTable
 from .system.info import SystemInfo
 
@@ -44,6 +45,7 @@ class PresenceRunner:
         time_override: Optional[int] = None,
         pause: bool = False,
         debug: bool = False,
+        pause_when: Optional[List[str]] = None,
     ):
         self.info = info
         self.ids = ids
@@ -52,10 +54,12 @@ class PresenceRunner:
         self.time_override = time_override
         self.pause = pause
         self.debug = debug
+        self.pause_when = pause_when or []
 
         self._rpc: Optional[Presence] = None
         self._client_id: Optional[str] = None
         self._warned_offline = False
+        self._paused_for: Optional[str] = None
 
     # -- plumbing --------------------------------------------------------
 
@@ -147,6 +151,26 @@ class PresenceRunner:
 
         return False
 
+    def paused_by(self) -> Optional[str]:
+        """The configured program currently holding the presence back.
+
+        Announced once when it starts and once when it clears - this is checked
+        every cycle, and a line per cycle would be noise.
+        """
+        if not self.pause_when:
+            return None
+
+        found = processes.find_running(self.pause_when)
+
+        if found and found != self._paused_for:
+            print("Pausing: {} is running.".format(found))
+        elif self._paused_for and not found:
+            print("{} closed, resuming.".format(self._paused_for))
+
+        self._paused_for = found
+
+        return found
+
     # -- main loop -------------------------------------------------------
 
     def run(self):
@@ -161,6 +185,14 @@ class PresenceRunner:
 
                 for payload in payloads:
                     seconds = self.time_override or payload.seconds
+
+                    if self.paused_by():
+                        # Leave the profile alone so whatever else is running
+                        # keeps the status it would have had.
+                        self.disconnect()
+                        self._sleep(seconds)
+                        continue
+
                     if self.show(payload):
                         self._sleep(seconds)
 

@@ -26,6 +26,7 @@ DEFAULTS: Dict[str, Dict[str, str]] = {
     "general": {
         "poll_rate": str(DEFAULT_POLL_RATE),
         "time": str(DEFAULT_CYCLE_TIME),
+        "pause_when": "",
     },
     "os": {
         "enabled": "on",
@@ -73,6 +74,7 @@ class Config:
     poll_rate: int = DEFAULT_POLL_RATE
     cycles: Dict[str, CycleConfig] = None
     warnings: List[str] = None
+    pause_when: List[str] = None
 
     def enabled_cycles(self) -> List[CycleConfig]:
         return [self.cycles[name] for name in CYCLE_NAMES if self.cycles[name].enabled]
@@ -227,6 +229,12 @@ def load_config(path: Optional[str] = None) -> Config:
         if section not in DEFAULTS:
             warnings.append('config: unknown section [{}], ignoring'.format(section))
 
+    pause_when = [
+        name.strip()
+        for name in general.get("pause_when", "").replace(";", ",").split(",")
+        if name.strip()
+    ]
+
     cycles = {
         name: _cycle_from_section(
             name,
@@ -237,4 +245,9 @@ def load_config(path: Optional[str] = None) -> Config:
         for name in CYCLE_NAMES
     }
 
-    return Config(poll_rate=poll_rate, cycles=cycles, warnings=warnings)
+    return Config(
+        poll_rate=poll_rate,
+        cycles=cycles,
+        warnings=warnings,
+        pause_when=pause_when,
+    )
