@@ -17,6 +17,9 @@ from .system import platforms
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "FetchCord"
 
+AGENT_LABEL = "com.github.fetchcord"
+AGENT_NAME = AGENT_LABEL + ".plist"
+
 SERVICE_NAME = "fetchcord.service"
 SERVICE_UNIT = """[Unit]
 Description=FetchCord - system info as Discord Rich Presence
@@ -30,6 +33,26 @@ RestartSec=30
 
 [Install]
 WantedBy=default.target
+"""
+
+
+AGENT_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{label}</string>
+    <key>ProgramArguments</key>
+    <array>
+{arguments}
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
 """
 
 
@@ -171,6 +194,66 @@ def _linux_uninstall() -> bool:
     return True
 
 
+# -- macOS --------------------------------------------------------------
+
+
+def agent_path() -> str:
+    return os.path.expanduser(os.path.join("~/Library/LaunchAgents", AGENT_NAME))
+
+
+def _launchctl(*args) -> bool:
+    if not shutil.which("launchctl"):
+        return False
+
+    try:
+        result = subprocess.run(
+            ["launchctl"] + list(args),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+    return result.returncode == 0
+
+
+def _macos_status() -> Optional[str]:
+    path = agent_path()
+
+    return path if os.path.exists(path) else None
+
+
+def _macos_install() -> str:
+    path = agent_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    command = launcher()
+    arguments = "\n".join(
+        "        <string>{}</string>".format(part) for part in command.split()
+    )
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(AGENT_PLIST.format(label=AGENT_LABEL, arguments=arguments))
+
+    _launchctl("load", path)
+
+    return path
+
+
+def _macos_uninstall() -> bool:
+    path = agent_path()
+    if not os.path.exists(path):
+        return False
+
+    _launchctl("unload", path)
+    try:
+        os.remove(path)
+    except OSError:
+        return False
+
+    return True
+
+
 # -- dispatch -----------------------------------------------------------
 
 
@@ -179,6 +262,8 @@ def _backend():
         return _windows_status, _windows_install, _windows_uninstall
     if platforms.IS_LINUX:
         return _linux_status, _linux_install, _linux_uninstall
+    if platforms.IS_MACOS:
+        return _macos_status, _macos_install, _macos_uninstall
 
     raise UnsupportedPlatform("autostart is not available on {}".format(platforms.name()))
 

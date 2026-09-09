@@ -1,7 +1,7 @@
 <h1 align="center">FetchCord</h1>
 
 <p align="center">
-    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-brightgreen?style=for-the-badge&logo=windows&logoColor=white">
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-brightgreen?style=for-the-badge&logo=windows&logoColor=white">
     <img src="https://img.shields.io/badge/python-3.9%2B-blue?style=for-the-badge&logo=python&logoColor=white">
     <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=for-the-badge">
 </p>
@@ -17,10 +17,13 @@ Discord application, so your profile reads *Playing Windows 11*, then
 
 ## What's new
 
-**3.1 brings Linux back**, natively - no neofetch. Everything comes from
+**3.2 brings macOS back.** One `sysctl` call and CoreGraphics through ctypes -
+no `system_profiler`, which takes about a second to answer. All three
+platforms are supported again.
+
+**3.1 brought Linux back**, natively - no neofetch. Everything comes from
 `/proc`, `/sys` and `/etc/os-release`, so there is nothing to install beyond
 FetchCord itself, and all 29 distro icons the id table carries work again.
-macOS is next.
 
 **3.0 was a Windows-only rewrite.**
 
@@ -37,11 +40,9 @@ macOS is next.
 - **`--dry-run`** prints exactly what would be sent to Discord, which makes
   "why is my GPU not showing" a ten second question.
 
-macOS is not supported yet - it is the next platform to get a collector.
-
 ## Requirements
 
-- Windows 7 or newer, or any current Linux distribution
+- Windows 7 or newer, any current Linux distribution, or macOS 10.13+
 - Python 3.9+
 - The **Discord desktop client**, running. Rich Presence does not exist in the
   browser version, and on Linux the Flatpak build needs the socket exposed
@@ -90,6 +91,9 @@ Same flags on both platforms; each uses the mechanism its users expect.
 - **Linux** - a systemd user service at
   `~/.config/systemd/user/fetchcord.service`, enabled with
   `systemctl --user enable --now`.
+- **macOS** - a launch agent at
+  `~/Library/LaunchAgents/com.github.fetchcord.plist`, loaded with
+  `launchctl load`.
 
 Neither needs administrator or root rights, and neither touches anything
 outside your own user account.
@@ -101,7 +105,7 @@ fetchcord --gen-config
 ```
 
 writes a commented config to `%APPDATA%\FetchCord\fetch_cord.conf` on Windows,
-or `~/.config/FetchCord/fetch_cord.conf` on Linux. Open it in any editor. Use
+or `~/.config/FetchCord/fetch_cord.conf` on Linux and macOS. Open it in any editor. Use
 `--config PATH` to point at a different file.
 
 Each cycle picks two lines of text and an optional small icon:
@@ -119,7 +123,7 @@ Any of these values work as `top_line` or `bottom_line` in any cycle:
 
 | Value | Example |
 | --- | --- |
-| `os` | `Windows 11 Pro 24H2 x86_64` / `Ubuntu 24.04 x86_64` |
+| `os` | `Windows 11 Pro 24H2 x86_64` / `Ubuntu 24.04 x86_64` / `macOS Sonoma 14.5 arm64` |
 | `kernel` | `10.0.26100.4652` / `6.11.0-9-generic` |
 | `uptime` | `3 hours, 12 mins` |
 | `cpu` | `AMD Ryzen 7 5800X (16) @ 3.80GHz` |
@@ -194,6 +198,26 @@ containers don't expose; `resolution` needs a DRM connector, so it is blank on
 headless machines; and GPU *model* names need `pci.ids` (`hwdata` on most
 distros) - without it you get the vendor, which is all the icon needs anyway.
 
+On macOS: Apple Silicon reports its GPU as part of the chip, but Intel Macs
+show `gpu` as `N/A` - reading it would mean running `system_profiler`, which
+is far too slow to run at startup. Apple Silicon chips and macOS releases also
+have no Discord applications yet (see below), so they use the generic one.
+
+## Hardware still needing Discord applications
+
+Everything on Windows and Linux resolves to an existing application. macOS
+does not, because the applications 2.x used belong to the upstream author:
+
+- **Apple Silicon** (M1-M4 and their Pro/Max/Ultra variants). Add them under
+  `"apple"` in the `cpu` section of `fetchcord_ids.json`; a variant with no
+  entry of its own falls back to the base chip, so `"m4"` alone covers an M4
+  Max.
+- **macOS releases.** Add `"macos": "<application id>"` to the `distro`
+  section.
+
+Until those exist the generic application is used, and the real model name is
+still shown as text.
+
 ## Adding your hardware
 
 Icons and application names come from
@@ -203,12 +227,11 @@ Matching lives in `fetch_cord/system/naming.py` (raw string → lookup key) and
 
 Reading the machine is one module per platform under
 `fetch_cord/system/platforms/`, each exposing a single `collect(info)`.
-Everything above them is platform-neutral, so adding an operating system means
-adding one file.
+Everything above them is platform-neutral.
 
-All of it is covered by tests that run anywhere - the Windows collectors fake
-the registry, and the Linux ones read captured fixture trees under
-`tests/fixtures/linux/`:
+All of it is covered by tests that run anywhere, by faking each platform's
+boundary - the registry on Windows, captured sysfs trees under
+`tests/fixtures/linux/`, and `sysctl` plus CoreGraphics on macOS:
 
 ```
 python -m unittest discover -s tests -t .
