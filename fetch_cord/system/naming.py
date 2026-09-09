@@ -6,7 +6,7 @@ any Windows API calls means they can be tested on any machine.
 """
 
 import re
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 # Marketing noise that shows up in registry CPU/GPU names.
 _TRADEMARKS = re.compile(r"\((?:r|tm|c)\)", re.IGNORECASE)
@@ -14,6 +14,79 @@ _TRADEMARKS = re.compile(r"\((?:r|tm|c)\)", re.IGNORECASE)
 _INTEL_CORE = re.compile(r"\bi([3579])\b")
 _RYZEN = re.compile(r"\bryzen\s+([3579])\b")
 _AMD_A_SERIES = re.compile(r"\ba(\d{1,2})\b")
+
+# Strings firmware ships when the vendor never filled the field in.
+_PLACEHOLDERS = {
+    "",
+    "to be filled by o.e.m.",
+    "default string",
+    "system product name",
+    "system manufacturer",
+    "system version",
+    "system name",
+    "not applicable",
+    "not specified",
+    "none",
+    "o.e.m.",
+    "unknown",
+}
+
+# os-release IDs that differ from the key the id table uses.
+_DISTRO_ALIASES = {
+    "pop": "pop!_os",
+    "opensuse-leap": "opensuseleap",
+    "opensuse-tumbleweed": "opensusetumbleweed",
+    "gentoo": "gentoo/linux",
+    "arcolinux": "arco",
+    "parrot": "parrotos",
+    "amzn": "amazon",
+}
+
+# Distro keys the id table carries. Mirrored here so the lookup can tell a
+# usable candidate from a distro we have no application for; tests assert this
+# stays in step with fetchcord_ids.json.
+_DISTRO_KEYS = frozenset({
+    "amazon",
+    "arch",
+    "arco",
+    "artix",
+    "bedrock",
+    "centos",
+    "debian",
+    "elementary",
+    "endeavouros",
+    "fedora",
+    "freebsd",
+    "funtoo",
+    "garuda",
+    "gentoo/linux",
+    "instantos",
+    "linuxmint",
+    "lmde",
+    "mageia",
+    "manjaro",
+    "nixos",
+    "opensuseleap",
+    "opensusetumbleweed",
+    "parrotos",
+    "pop!_os",
+    "rebornos",
+    "solus",
+    "ubuntu",
+    "void",
+    "zorin",
+})
+
+# PCI vendor ids for display adapters.
+_PCI_VENDORS = {
+    "0x10de": "nvidia",
+    "0x1002": "amd",
+    "0x1022": "amd",
+    "0x8086": "intel",
+    "0x15ad": "vmware",
+    "0x1af4": "virtio",
+    "0x1013": "cirrus",
+}
 
 
 def clean(value: str) -> str:
@@ -198,3 +271,52 @@ def format_bytes(value: int, unit: str = "gb") -> str:
         return "{:.0f} MiB".format(value / (1024**2))
 
     return "{:.2f} GiB".format(value / (1024**3))
+
+
+def strip_placeholder(value: str) -> str:
+    """Blank out a firmware field the vendor left as boilerplate."""
+    if not isinstance(value, str):
+        return ""
+
+    value = value.strip()
+
+    return "" if value.lower() in _PLACEHOLDERS else value
+
+
+def looks_like_a_name(value: str) -> bool:
+    """Whether a firmware string reads as a product name rather than a code.
+
+    "ThinkPad T14 Gen 1" does; "20UD0013US" and "1.0" do not.
+    """
+    value = strip_placeholder(value)
+
+    return bool(value) and " " in value and any(c.isalpha() for c in value)
+
+
+def linux_distro_key(values: Dict[str, str]) -> str:
+    """The distro-table key for a parsed /etc/os-release."""
+    for candidate in _distro_key_candidates(values):
+        candidate = _DISTRO_ALIASES.get(candidate.strip().lower(), candidate.strip().lower())
+        # A derivative we have no icon for falls through to what it is based
+        # on, rather than naming an application that doesn't exist.
+        if candidate in _DISTRO_KEYS:
+            return candidate
+
+    return "unknown"
+
+
+def _distro_key_candidates(values: Dict[str, str]) -> List[str]:
+    candidates = [values.get("ID", "")]
+    # ID_LIKE lets a derivative fall back to what it is based on.
+    candidates.extend((values.get("ID_LIKE") or "").split())
+    name = (values.get("NAME") or "").lower()
+    candidates.append(name.replace(" ", ""))
+    # "Zorin OS" -> "zorin"
+    candidates.append(name.split()[0] if name.split() else "")
+
+    return candidates
+
+
+def pci_vendor(vendor_id: str) -> Optional[str]:
+    """Vendor key for a PCI vendor id such as "0x10de"."""
+    return _PCI_VENDORS.get((vendor_id or "").strip().lower())

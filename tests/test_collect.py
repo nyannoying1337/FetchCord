@@ -9,7 +9,8 @@ import unittest
 from unittest import mock
 
 from fetch_cord.system import info as info_module
-from fetch_cord.system import winapi
+from fetch_cord.system import platforms
+from fetch_cord.system.platforms import windows
 
 # A Windows 11 laptop, as the registry actually reports it.
 OS_VALUES = {
@@ -39,18 +40,18 @@ BIOS_VALUES = {
 
 class CollectTestCase(unittest.TestCase):
     def collect(self, os_values=None, cpu_values=None, bios_values=None, gpus=None, mode=(1920, 1080, 144)):
-        with mock.patch.object(winapi, "IS_WINDOWS", True), mock.patch.object(
-            winapi, "os_version", return_value=OS_VALUES if os_values is None else os_values
+        with mock.patch.object(platforms, "current", return_value=windows), mock.patch.object(
+            windows, "os_version", return_value=OS_VALUES if os_values is None else os_values
         ), mock.patch.object(
-            winapi, "cpu_info", return_value=CPU_VALUES if cpu_values is None else cpu_values
+            windows, "cpu_info", return_value=CPU_VALUES if cpu_values is None else cpu_values
         ), mock.patch.object(
-            winapi, "bios_info", return_value=BIOS_VALUES if bios_values is None else bios_values
+            windows, "bios_info", return_value=BIOS_VALUES if bios_values is None else bios_values
         ), mock.patch.object(
-            winapi, "gpu_names", return_value=["NVIDIA GeForce GTX 1650"] if gpus is None else gpus
+            windows, "gpu_names", return_value=["NVIDIA GeForce GTX 1650"] if gpus is None else gpus
         ), mock.patch.object(
-            winapi, "screen_mode", return_value=mode
+            windows, "screen_mode", return_value=mode
         ), mock.patch.object(
-            info_module, "_collect_shell"
+            windows, "_collect_shell"
         ):
             return info_module.collect()
 
@@ -153,37 +154,27 @@ class TestCollectWindows(CollectTestCase):
 
 
 class TestPlatformGuards(unittest.TestCase):
-    def test_winapi_helpers_refuse_to_run_off_windows(self):
-        if winapi.IS_WINDOWS:  # pragma: no cover - only meaningful elsewhere
+    def test_windows_helpers_refuse_to_run_elsewhere(self):
+        if windows.IS_WINDOWS:  # pragma: no cover - only meaningful elsewhere
             self.skipTest("running on Windows")
 
-        for helper in (winapi.gpu_names, winapi.screen_mode):
+        for helper in (windows.gpu_names, windows.screen_mode):
             with self.subTest(helper=helper.__name__):
-                with self.assertRaises(winapi.UnsupportedPlatform):
+                with self.assertRaises(windows.UnsupportedPlatform):
                     helper()
 
-    def test_startup_refuses_to_run_off_windows(self):
-        if winapi.IS_WINDOWS:  # pragma: no cover
-            self.skipTest("running on Windows")
-
-        from fetch_cord import startup
-
-        with self.assertRaises(winapi.UnsupportedPlatform):
-            startup.status()
-
-    def test_collect_matches_the_platform(self):
-        """Real values on Windows, placeholders everywhere else."""
+    def test_collect_reads_real_values_on_a_supported_platform(self):
+        """Windows and Linux both detect; anything else degrades to N/A."""
         info = info_module.collect()
 
         self.assertGreater(info.boot_time, 0)
+        self.assertGreater(info.memory_total, 0)
 
-        if winapi.IS_WINDOWS:
+        if platforms.SUPPORTED:
             self.assertNotEqual(info.cpu_line, "N/A")
             self.assertNotEqual(info.os_key, "unknown")
-            self.assertGreater(info.memory_total, 0)
         else:
             self.assertEqual(info.cpu_line, "N/A")
-            self.assertEqual(info.os_key, "unknown")
 
 
 if __name__ == "__main__":

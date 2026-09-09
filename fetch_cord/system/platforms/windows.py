@@ -5,8 +5,17 @@ and each accessor raises :class:`UnsupportedPlatform` rather than exploding at
 import time. That keeps the rest of the package unit-testable anywhere.
 """
 
+import os
+import platform
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+import psutil
+
+from .. import naming, shell
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..info import SystemInfo
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -180,3 +189,139 @@ def screen_mode() -> Optional[Tuple[int, int, int]]:
         return None
 
     return (int(mode.dmPelsWidth), int(mode.dmPelsHeight), int(mode.dmDisplayFrequency))
+
+
+# Executable names we recognise when walking up the process tree.
+_TERMINALS = {
+    "windowsterminal.exe": "Windows Terminal",
+    "conemu64.exe": "ConEmu",
+    "conemu.exe": "ConEmu",
+    "cmder.exe": "Cmder",
+    "alacritty.exe": "Alacritty",
+    "wezterm-gui.exe": "WezTerm",
+    "hyper.exe": "Hyper",
+    "code.exe": "Visual Studio Code",
+    "explorer.exe": "",  # launched from the shell: no terminal at all
+}
+
+_SHELLS = {
+    "powershell.exe": "PowerShell",
+    "pwsh.exe": "PowerShell 7",
+    "cmd.exe": "Command Prompt",
+    "bash.exe": "bash",
+    "nu.exe": "Nushell",
+}
+
+_NOT_A_TERMINAL = {"conhost.exe", "openconsole.exe", "python.exe", "pythonw.exe", "py.exe"}
+
+
+def _collect_os(info: "SystemInfo"):
+    values = os_version()
+
+    build_number = 0
+    for key in ("CurrentBuildNumber", "CurrentBuild"):
+        try:
+            build_number = int(values.get(key, 0))
+        except (TypeError, ValueError):
+            continue
+        if build_number:
+            break
+
+    product_name = str(values.get("ProductName", "") or "")
+    info.os_name = naming.windows_name(product_name, build_number)
+    info.os_key = naming.windows_key(product_name, build_number)
+    info.os_release = str(values.get("DisplayVersion") or values.get("ReleaseId") or "")
+
+    revision = values.get("UBR")
+    major = str(values.get("CurrentMajorVersionNumber", 10))
+    minor = str(values.get("CurrentMinorVersionNumber", 0))
+    if build_number:
+        info.build = "{}.{}.{}".format(major, minor, build_number)
+        if isinstance(revision, int):
+            info.build += ".{}".format(revision)
+
+    machine = platform.machine()
+    info.arch = {"AMD64": "x86_64", "ARM64": "aarch64"}.get(machine, machine)
+
+
+def _collect_cpu(info: "SystemInfo"):
+    values = cpu_info()
+
+    info.cpu_name = str(values.get("ProcessorNameString", "") or "")
+    info.cpu_model = naming.cpu_model(info.cpu_name)
+    info.cpu_vendor = naming.cpu_vendor(
+        info.cpu_name or str(values.get("VendorIdentifier", "") or "")
+    )
+    info.cpu_family = naming.cpu_family(info.cpu_name)
+
+    clock = values.get("~MHz")
+    if isinstance(clock, int):
+        info.cpu_clock_mhz = clock
+
+    try:
+        info.cpu_cores = psutil.cpu_count(logical=True) or 0
+    except Exception:
+        info.cpu_cores = 0
+
+
+def _collect_board(info: "SystemInfo"):
+    values = bios_info()
+
+    def text(key: str) -> str:
+        value = values.get(key)
+        if not isinstance(value, str):
+            return ""
+        value = value.strip()
+        # OEMs love leaving these placeholders in the firmware.
+        if value.lower() in ("", "to be filled by o.e.m.", "default string", "system product name", "system manufacturer"):
+            return ""
+
+        return value
+
+    info.system_vendor = text("SystemManufacturer")
+    info.system_model = text("SystemProductName") or text("SystemFamily")
+    info.board_vendor = text("BaseBoardManufacturer")
+    info.board_model = text("BaseBoardProduct")
+
+
+def _collect_display(info: "SystemInfo"):
+    mode = screen_mode()
+    if not mode:
+        return
+
+    width, height, refresh = mode
+    info.resolution = "{}x{}".format(width, height)
+    info.refresh_rate = refresh
+
+
+def _display_adapters(names: List[str]) -> List[str]:
+    """Drop virtual adapters like "Microsoft Basic Render Driver".
+
+    Falls back to the raw list if filtering leaves nothing, so an unrecognised
+    GPU is still shown by name.
+    """
+    cleaned = [naming.clean(name) for name in names]
+    real = [name for name in cleaned if naming.gpu_vendor(name)]
+
+    return real or cleaned
+
+
+def _collect_shell(info):
+    """Terminal and shell we were started from."""
+    # Windows Terminal advertises itself, which saves a walk when it's hosting
+    # a shell we'd otherwise stop at.
+    terminal = "Windows Terminal" if os.environ.get("WT_SESSION") else ""
+
+    info.terminal, info.shell = shell.detect(
+        _TERMINALS, _SHELLS, _NOT_A_TERMINAL, terminal=terminal
+    )
+
+
+def collect(info):
+    """Fill in everything we can read from Windows."""
+    _collect_os(info)
+    _collect_cpu(info)
+    _collect_board(info)
+    _collect_display(info)
+    _collect_shell(info)
+    info.gpus = _display_adapters(gpu_names())

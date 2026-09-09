@@ -19,7 +19,8 @@ MIN_TEXT = 2
 
 def clamp(text: Optional[str]) -> Optional[str]:
     """Fit a line into what Discord accepts, or None if it can't be shown."""
-    if not text:
+    if not text or text == UNKNOWN:
+        # Better to leave the line out than to publish "N/A" to a profile.
         return None
 
     text = text.strip()

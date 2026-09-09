@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
         python-version: ["3.9", "3.13"]
     runs-on: ${{ matrix.os }}
 
@@ -27,16 +27,16 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests -t . -v
 
+      # Exercises the real collectors - registry and Win32 on Windows,
+      # /proc, /sys and /etc on Linux - against an actual host.
       - name: Detect this machine
-        if: runner.os == 'Windows'
-        # Exercises the registry and Win32 collectors on a real Windows host.
+        if: runner.os != 'macOS'
         run: fetchcord --dry-run
 
-      - name: Refuses to run off Windows
-        if: runner.os != 'Windows'
-        shell: bash
+      - name: Refuses to run where there is no collector
+        if: runner.os == 'macOS'
         run: |
           if fetchcord --dry-run; then
-            echo "expected a non-zero exit on a non-Windows host" >&2
+            echo "expected a non-zero exit with no collector for this platform" >&2
             exit 1
           fi

@@ -1,13 +1,13 @@
 <h1 align="center">FetchCord</h1>
 
 <p align="center">
-    <img src="https://img.shields.io/badge/platform-Windows-brightgreen?style=for-the-badge&logo=windows&logoColor=white">
+    <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-brightgreen?style=for-the-badge&logo=windows&logoColor=white">
     <img src="https://img.shields.io/badge/python-3.9%2B-blue?style=for-the-badge&logo=python&logoColor=white">
     <img src="https://img.shields.io/badge/license-MIT-lightgrey?style=for-the-badge">
 </p>
 
 <p align="center">
-    Shows your Windows system info as Discord Rich Presence.
+    Shows your system info as Discord Rich Presence.
 </p>
 
 FetchCord rotates through a few "cycles" on your Discord profile: your Windows
@@ -15,9 +15,14 @@ version, your CPU and GPU, and your PC. Each cycle shows up under its own
 Discord application, so your profile reads *Playing Windows 11*, then
 *Playing Ryzen 7*, and so on.
 
-## What's new in 3.0
+## What's new
 
-FetchCord 3.0 is a Windows-only rewrite.
+**3.1 brings Linux back**, natively - no neofetch. Everything comes from
+`/proc`, `/sys` and `/etc/os-release`, so there is nothing to install beyond
+FetchCord itself, and all 29 distro icons the id table carries work again.
+macOS is next.
+
+**3.0 was a Windows-only rewrite.**
 
 - **No more neofetch.** Everything is read natively from the registry, a
   couple of Windows API calls and psutil. Neofetch was archived in 2024 and
@@ -32,25 +37,25 @@ FetchCord 3.0 is a Windows-only rewrite.
 - **`--dry-run`** prints exactly what would be sent to Discord, which makes
   "why is my GPU not showing" a ten second question.
 
-Linux and macOS support was removed rather than left broken; the last release
-supporting them is 2.x (`pip install "fetchcord<3"`).
+macOS is not supported yet - it is the next platform to get a collector.
 
 ## Requirements
 
-- Windows 7 or newer (developed and tested against Windows 10 and 11)
+- Windows 7 or newer, or any current Linux distribution
 - Python 3.9+
 - The **Discord desktop client**, running. Rich Presence does not exist in the
-  browser version.
+  browser version, and on Linux the Flatpak build needs the socket exposed
+  (see Troubleshooting).
 
 ## Install
 
-```powershell
+```
 python -m pip install fetchcord
 ```
 
 Or straight from this repository:
 
-```powershell
+```
 python -m pip install git+https://github.com/nyannoying1337/FetchCord
 ```
 
@@ -71,24 +76,33 @@ fetchcord --dry-run
 
 ### Start it automatically
 
-```powershell
-fetchcord --install-startup     # start at sign-in, no console window
+```
+fetchcord --install-startup     # start at sign-in
 fetchcord --startup-status      # check what's registered
 fetchcord --uninstall-startup   # stop
 ```
 
-This writes a single value under
-`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`. No
-administrator rights, nothing outside your own user account.
+Same flags on both platforms; each uses the mechanism its users expect.
+
+- **Windows** - one value under
+  `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, using
+  the windowless launcher so no console appears.
+- **Linux** - a systemd user service at
+  `~/.config/systemd/user/fetchcord.service`, enabled with
+  `systemctl --user enable --now`.
+
+Neither needs administrator or root rights, and neither touches anything
+outside your own user account.
 
 ## Configuration
 
-```powershell
+```
 fetchcord --gen-config
 ```
 
-writes a commented config to `%APPDATA%\FetchCord\fetch_cord.conf`. Open it in
-any editor. Use `--config PATH` to point at a different file.
+writes a commented config to `%APPDATA%\FetchCord\fetch_cord.conf` on Windows,
+or `~/.config/FetchCord/fetch_cord.conf` on Linux. Open it in any editor. Use
+`--config PATH` to point at a different file.
 
 Each cycle picks two lines of text and an optional small icon:
 
@@ -105,8 +119,8 @@ Any of these values work as `top_line` or `bottom_line` in any cycle:
 
 | Value | Example |
 | --- | --- |
-| `os` | `Windows 11 Pro 24H2 x86_64` |
-| `kernel` | `10.0.26100.4652` |
+| `os` | `Windows 11 Pro 24H2 x86_64` / `Ubuntu 24.04 x86_64` |
+| `kernel` | `10.0.26100.4652` / `6.11.0-9-generic` |
 | `uptime` | `3 hours, 12 mins` |
 | `cpu` | `AMD Ryzen 7 5800X (16) @ 3.80GHz` |
 | `gpu` | `NVIDIA GeForce RTX 4070` |
@@ -153,6 +167,16 @@ still work.
 signed in through the browser. FetchCord keeps retrying, so just start Discord
 and it will connect on its own.
 
+On Linux, a **Flatpak** Discord keeps its IPC socket inside the sandbox. Either
+link it out once:
+
+```
+ln -sf {XDG_RUNTIME_DIR:-/run/user/$UID}/app/com.discordapp.Discord/discord-ipc-0 \
+       ${XDG_RUNTIME_DIR:-/run/user/$UID}/discord-ipc-0
+```
+
+or install Discord from your distribution's packages instead.
+
 **Nothing shows on my profile** - check Discord's *Settings → Activity Privacy
 → Share your detected activities with others*.
 
@@ -165,21 +189,34 @@ text; only the icon and the application name fall back to a generic one.
 Anything reading `N/A` couldn't be read from this machine; include that output
 in the issue.
 
+On Linux specifically: `host` and `board` come from the DMI tables, which
+containers don't expose; `resolution` needs a DRM connector, so it is blank on
+headless machines; and GPU *model* names need `pci.ids` (`hwdata` on most
+distros) - without it you get the vendor, which is all the icon needs anyway.
+
 ## Adding your hardware
 
 Icons and application names come from
 [`fetch_cord/resources/fetchcord_ids.json`](fetch_cord/resources/fetchcord_ids.json).
 Matching lives in `fetch_cord/system/naming.py` (raw string → lookup key) and
-`fetch_cord/ids.py` (lookup key → Discord application id and icon). Both are
-covered by tests you can run anywhere:
+`fetch_cord/ids.py` (lookup key → Discord application id and icon).
 
-```powershell
+Reading the machine is one module per platform under
+`fetch_cord/system/platforms/`, each exposing a single `collect(info)`.
+Everything above them is platform-neutral, so adding an operating system means
+adding one file.
+
+All of it is covered by tests that run anywhere - the Windows collectors fake
+the registry, and the Linux ones read captured fixture trees under
+`tests/fixtures/linux/`:
+
+```
 python -m unittest discover -s tests -t .
 ```
 
 ## Examples
 
-### Windows
+### Operating systems
 ![Windows](Examples/windows.png)
 ### CPUs
 ![Ryzen 9](Examples/ryzencpu.png) ![Intel i7](Examples/intelcpu.png) ![Intel Pentium](Examples/pent.png)
