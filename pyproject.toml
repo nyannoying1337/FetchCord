@@ -4,17 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "FetchCord"
-version = "3.0.0"
-description = "Shows your Windows system info as Discord Rich Presence."
+version = "3.1.0"
+description = "Shows your system info as Discord Rich Presence."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.9"
 authors = [{ name = "MrPotatoBobx" }]
-keywords = ["discord", "rich presence", "windows", "system info", "fetch"]
+keywords = ["discord", "rich presence", "windows", "linux", "system info", "fetch"]
 dependencies = ["pypresence>=4.3", "psutil>=5.8"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",

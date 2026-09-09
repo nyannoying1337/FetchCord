@@ -4,38 +4,15 @@ Everything is read natively (registry, a couple of ctypes calls and psutil) so
 there is no dependency on an external fetch tool.
 """
 
-import os
-import platform
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 import psutil
 
-from . import naming, winapi
+from . import naming
+from . import platforms
 
-# Executable names we recognise when walking up the process tree.
-_TERMINALS = {
-    "windowsterminal.exe": "Windows Terminal",
-    "conemu64.exe": "ConEmu",
-    "conemu.exe": "ConEmu",
-    "cmder.exe": "Cmder",
-    "alacritty.exe": "Alacritty",
-    "wezterm-gui.exe": "WezTerm",
-    "hyper.exe": "Hyper",
-    "code.exe": "Visual Studio Code",
-    "explorer.exe": "",  # launched from the shell: no terminal at all
-}
-
-_SHELLS = {
-    "powershell.exe": "PowerShell",
-    "pwsh.exe": "PowerShell 7",
-    "cmd.exe": "Command Prompt",
-    "bash.exe": "bash",
-    "nu.exe": "Nushell",
-}
-
-_NOT_A_TERMINAL = {"conhost.exe", "openconsole.exe", "python.exe", "pythonw.exe", "py.exe"}
 
 UNKNOWN = "N/A"
 
@@ -271,7 +248,7 @@ def _collect_memory(info: SystemInfo):
 
 
 def _collect_disk(info: SystemInfo):
-    root = os.environ.get("SystemDrive", "C:") + "\\" if winapi.IS_WINDOWS else "/"
+    root = platforms.disk_root()
     try:
         usage = psutil.disk_usage(root)
     except Exception:
@@ -297,133 +274,6 @@ def _collect_battery(info: SystemInfo):
     info.laptop = True
 
 
-def _collect_os(info: SystemInfo):
-    values = winapi.os_version()
-
-    build_number = 0
-    for key in ("CurrentBuildNumber", "CurrentBuild"):
-        try:
-            build_number = int(values.get(key, 0))
-        except (TypeError, ValueError):
-            continue
-        if build_number:
-            break
-
-    product_name = str(values.get("ProductName", "") or "")
-    info.os_name = naming.windows_name(product_name, build_number)
-    info.os_key = naming.windows_key(product_name, build_number)
-    info.os_release = str(values.get("DisplayVersion") or values.get("ReleaseId") or "")
-
-    revision = values.get("UBR")
-    major = str(values.get("CurrentMajorVersionNumber", 10))
-    minor = str(values.get("CurrentMinorVersionNumber", 0))
-    if build_number:
-        info.build = "{}.{}.{}".format(major, minor, build_number)
-        if isinstance(revision, int):
-            info.build += ".{}".format(revision)
-
-    machine = platform.machine()
-    info.arch = {"AMD64": "x86_64", "ARM64": "aarch64"}.get(machine, machine)
-
-
-def _collect_cpu(info: SystemInfo):
-    values = winapi.cpu_info()
-
-    info.cpu_name = str(values.get("ProcessorNameString", "") or "")
-    info.cpu_model = naming.cpu_model(info.cpu_name)
-    info.cpu_vendor = naming.cpu_vendor(
-        info.cpu_name or str(values.get("VendorIdentifier", "") or "")
-    )
-    info.cpu_family = naming.cpu_family(info.cpu_name)
-
-    clock = values.get("~MHz")
-    if isinstance(clock, int):
-        info.cpu_clock_mhz = clock
-
-    try:
-        info.cpu_cores = psutil.cpu_count(logical=True) or 0
-    except Exception:
-        info.cpu_cores = 0
-
-
-def _collect_board(info: SystemInfo):
-    values = winapi.bios_info()
-
-    def text(key: str) -> str:
-        value = values.get(key)
-        if not isinstance(value, str):
-            return ""
-        value = value.strip()
-        # OEMs love leaving these placeholders in the firmware.
-        if value.lower() in ("", "to be filled by o.e.m.", "default string", "system product name", "system manufacturer"):
-            return ""
-
-        return value
-
-    info.system_vendor = text("SystemManufacturer")
-    info.system_model = text("SystemProductName") or text("SystemFamily")
-    info.board_vendor = text("BaseBoardManufacturer")
-    info.board_model = text("BaseBoardProduct")
-
-
-def _collect_display(info: SystemInfo):
-    mode = winapi.screen_mode()
-    if not mode:
-        return
-
-    width, height, refresh = mode
-    info.resolution = "{}x{}".format(width, height)
-    info.refresh_rate = refresh
-
-
-def _display_adapters(names: List[str]) -> List[str]:
-    """Drop virtual adapters like "Microsoft Basic Render Driver".
-
-    Falls back to the raw list if filtering leaves nothing, so an unrecognised
-    GPU is still shown by name.
-    """
-    cleaned = [naming.clean(name) for name in names]
-    real = [name for name in cleaned if naming.gpu_vendor(name)]
-
-    return real or cleaned
-
-
-def _collect_shell(info: SystemInfo):
-    """Walk up the process tree looking for the terminal and shell we run in."""
-    if os.environ.get("WT_SESSION"):
-        info.terminal = "Windows Terminal"
-
-    try:
-        process = psutil.Process().parent()
-    except Exception:
-        return
-
-    depth = 0
-    while process is not None and depth < 8:
-        if info.terminal and info.shell:
-            break
-
-        depth += 1
-        try:
-            name = process.name().lower()
-            parent = process.parent()
-        except Exception:
-            return
-
-        if not info.shell and name in _SHELLS:
-            info.shell = _SHELLS[name]
-        elif not info.terminal and name in _TERMINALS:
-            info.terminal = _TERMINALS[name]
-            break
-        elif name in _NOT_A_TERMINAL or name in _SHELLS:
-            pass
-        elif not info.terminal:
-            # Something we don't have a name for; stop rather than guess.
-            break
-
-        process = parent
-
-
 def collect(memory_unit: str = "gb") -> SystemInfo:
     """Gather everything we know about this machine."""
     info = SystemInfo(memory_unit=memory_unit)
@@ -433,13 +283,14 @@ def collect(memory_unit: str = "gb") -> SystemInfo:
     except Exception:
         info.boot_time = time.time()
 
-    if winapi.IS_WINDOWS:
-        _collect_os(info)
-        _collect_cpu(info)
-        _collect_board(info)
-        _collect_display(info)
-        _collect_shell(info)
-        info.gpus = _display_adapters(winapi.gpu_names())
+    collector = platforms.current()
+    if collector is not None:
+        try:
+            collector.collect(info)
+        except Exception as error:
+            # A collector failing is not worth losing the whole presence over:
+            # anything it didn't fill simply reads N/A.
+            print("Could not read some system info: {}".format(error))
 
     info.refresh()
 

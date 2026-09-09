@@ -10,10 +10,10 @@ from fetch_cord import __main__ as entry
 from .test_info import sample
 
 
-def run(argv, windows=True):
+def run(argv, supported=True):
     """Run main() with a fixed machine, capturing stdout."""
     out = io.StringIO()
-    with mock.patch.object(entry, "IS_WINDOWS", windows), mock.patch.object(
+    with mock.patch.object(entry.platforms, "SUPPORTED", supported), mock.patch.object(
         entry, "collect", return_value=sample()
     ), redirect_stdout(out):
         code = entry.main(argv)
@@ -22,17 +22,17 @@ def run(argv, windows=True):
 
 
 class TestPlatformGuard(unittest.TestCase):
-    def test_refuses_to_run_off_windows(self):
-        code, output = run(["--dry-run"], windows=False)
+    def test_refuses_to_run_on_an_unsupported_platform(self):
+        code, output = run(["--dry-run"], supported=False)
 
         self.assertEqual(code, 1)
-        self.assertIn("Windows only", output)
+        self.assertIn("no collector", output)
 
-    def test_startup_flags_also_require_windows(self):
-        code, output = run(["--startup-status"], windows=False)
+    def test_startup_flags_also_need_a_supported_platform(self):
+        code, output = run(["--startup-status"], supported=False)
 
         self.assertEqual(code, 1)
-        self.assertIn("Windows only", output)
+        self.assertIn("no collector", output)
 
 
 class TestDryRun(unittest.TestCase):
@@ -58,7 +58,7 @@ class TestDryRun(unittest.TestCase):
         info.terminal = "Windows Terminal"
         info.shell = "PowerShell 7"
         out = io.StringIO()
-        with mock.patch.object(entry, "IS_WINDOWS", True), mock.patch.object(
+        with mock.patch.object(entry.platforms, "SUPPORTED", True), mock.patch.object(
             entry, "collect", return_value=info
         ), redirect_stdout(out):
             code = entry.main(["--dry-run", "--with-terminal"])
@@ -95,7 +95,7 @@ class TestArgumentHandling(unittest.TestCase):
     def test_memtype_changes_the_units(self):
         with mock.patch.object(entry, "collect") as collect:
             collect.return_value = sample()
-            with mock.patch.object(entry, "IS_WINDOWS", True), redirect_stdout(io.StringIO()):
+            with mock.patch.object(entry.platforms, "SUPPORTED", True), redirect_stdout(io.StringIO()):
                 entry.main(["--dry-run", "-m", "mb"])
 
         self.assertEqual(collect.call_args.kwargs["memory_unit"], "mb")

@@ -8,9 +8,8 @@ from .config import MIN_CYCLE_TIME, load_config
 from .cycles import build_payloads
 from .ids import IdTable
 from .presence import PresenceRunner
-from .system import collect
+from .system import collect, platforms
 from .system.info import LINE_NAMES
-from .system.winapi import IS_WINDOWS
 from .update import update
 
 # Command line flags that switch off a cycle from the config.
@@ -22,13 +21,13 @@ _DISABLED_BY = {
 }
 
 
-def _require_windows() -> bool:
-    if IS_WINDOWS:
+def _require_supported_platform() -> bool:
+    if platforms.SUPPORTED:
         return True
 
     print(
-        "FetchCord {} is Windows only. For Linux or macOS, use FetchCord 2.x "
-        "(pip install 'fetchcord<3').".format(__version__)
+        "FetchCord {} has no collector for {} yet - supported platforms are "
+        "Windows and Linux.".format(__version__, platforms.name())
     )
 
     return False
@@ -69,7 +68,7 @@ def main(argv=None) -> int:
         return 0
 
     if args.install_startup or args.uninstall_startup or args.startup_status:
-        if not _require_windows():
+        if not _require_supported_platform():
             return 1
 
         from . import startup
@@ -84,7 +83,7 @@ def main(argv=None) -> int:
 
         return 0
 
-    if not _require_windows():
+    if not _require_supported_platform():
         return 1
 
     if args.time is not None and args.time < MIN_CYCLE_TIME:

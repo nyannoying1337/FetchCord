@@ -1,0 +1,8 @@
+#	Vendor  Device
+1002  Advanced Micro Devices, Inc. [AMD/ATI]
+	73df  Navi 22 [Radeon RX 6700 XT]
+10de  NVIDIA Corporation
+	2482  GA104 [GeForce RTX 3070 Ti]
+	2484  GA104 [GeForce RTX 3070]
+8086  Intel Corporation
+	9bc5  CometLake-S GT2 [UHD Graphics 630]
